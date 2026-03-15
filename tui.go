@@ -32,6 +32,7 @@ type model struct {
 	perspective    int
 	useUnicode     bool
 	pieceScale     int
+	thinking       bool
 }
 
 type aiMoveMsg struct {
@@ -62,11 +63,13 @@ func newModel(aiMode aiSide, aiDepth int, useUnicode bool, pieceScale int) model
 		perspective:  playerPerspective(aiMode),
 		useUnicode:   useUnicode,
 		pieceScale:   pieceScale,
+		thinking:     false,
 	}
 }
 
 func (m model) Init() tea.Cmd {
 	if aiControls(m.aiMode, m.state.Turn()) {
+		m.thinking = true
 		return aiMoveCmd(m.state, m.aiDepth)
 	}
 	return nil
@@ -75,6 +78,7 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case aiMoveMsg:
+		m.thinking = false
 		if m.gameOver {
 			return m, nil
 		}
@@ -151,7 +155,7 @@ func (m model) View() string {
 	if m.hasLastMove {
 		lastPtr = &m.lastMove
 	}
-	return renderBoard(m.state, lastPtr, statusLine, m.moveHistory, prompt, m.width, m.perspective, m.useUnicode, m.pieceScale)
+	return renderBoard(m.state, lastPtr, statusLine, m.moveHistory, prompt, m.width, m.perspective, m.useUnicode, m.pieceScale, m.thinking)
 }
 
 func (m *model) handleInput(input string) tea.Cmd {
@@ -190,12 +194,8 @@ func (m *model) handleInput(input string) tea.Cmd {
 			}
 			depth = parsed
 		}
-		move, ok := chess.BestMove(m.state, depth)
-		if !ok {
-			m.applyGameOver()
-			return nil
-		}
-		return m.applyMove(move, "AI")
+		m.thinking = true
+		return aiMoveCmd(m.state, depth)
 	}
 
 	move, err := chess.ParseMove(input, m.state)
@@ -226,6 +226,7 @@ func (m *model) applyMove(move chess.Move, source string) tea.Cmd {
 	}
 
 	if aiControls(m.aiMode, m.state.Turn()) {
+		m.thinking = true
 		return aiMoveCmd(m.state, m.aiDepth)
 	}
 	return nil

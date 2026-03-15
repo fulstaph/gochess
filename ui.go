@@ -32,6 +32,7 @@ var (
 	promptBox       = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(colorTextMuted).Background(colorPromptBg).Foreground(colorPromptFg).Padding(0, 1)
 	statusStyle     = lipgloss.NewStyle().Foreground(colorTextAccent).Bold(true)
 	warnStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#B00020")).Bold(true)
+	thinkingStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#EA580C")).Bold(true).Blink(true) // Orange, blinking
 	promptTextStyle = lipgloss.NewStyle().Foreground(colorPromptFg)
 )
 
@@ -40,8 +41,8 @@ const (
 	squareHeight = 3
 )
 
-func renderBoard(state chess.GameState, lastMove *chess.Move, status string, moveHistory []string, prompt string, width int, perspective int, useUnicode bool, pieceScale int) string {
-	header := buildHeader(state, status, perspective)
+func renderBoard(state chess.GameState, lastMove *chess.Move, status string, moveHistory []string, prompt string, width int, perspective int, useUnicode bool, pieceScale int, thinking bool) string {
+	header := buildHeader(state, status, perspective, thinking)
 	boardLines, boardHeight := buildBoardLines(state, lastMove, perspective, useUnicode, pieceScale)
 	boardBlock := panelStyle.Render(strings.Join(boardLines, "\n"))
 
@@ -60,18 +61,30 @@ func renderBoard(state chess.GameState, lastMove *chess.Move, status string, mov
 	return joined
 }
 
-func buildHeader(state chess.GameState, status string, perspective int) string {
+func buildHeader(state chess.GameState, status string, perspective int, thinking bool) string {
 	title := titleStyle.Render("Gochess")
 	view := chess.ColorName(perspective)
 	meta := metaStyle.Render(fmt.Sprintf("Move %d | %s to move | Halfmove %d | View: %s", state.FullmoveNumber(), chess.ColorName(state.Turn()), state.HalfmoveClock(), view))
 	lines := []string{title, meta}
-	if status != "" {
+	
+	statusLine := ""
+	if thinking {
+		statusLine = thinkingStyle.Render("Thinking...")
+		if status != "" {
+			statusLine += " | " + statusStyle.Render(status)
+		}
+	} else if status != "" {
 		style := statusStyle
 		if strings.Contains(status, "Error:") {
 			style = warnStyle
 		}
-		lines = append(lines, style.Render(status))
+		statusLine = style.Render(status)
 	}
+	
+	if statusLine != "" {
+		lines = append(lines, statusLine)
+	}
+	
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
