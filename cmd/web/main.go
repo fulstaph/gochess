@@ -3,29 +3,26 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/fulstaph/gochess/server"
 	"github.com/fulstaph/gochess/store"
 )
 
 func main() {
-	port := flag.Int("port", 8080, "HTTP port")
-	dbURL := flag.String("db", "", "PostgreSQL DSN (e.g. postgres://gochess:gochess@localhost/gochess). Falls back to DATABASE_URL env var. Omit for in-memory mode.")
-	flag.Parse()
-
-	if *dbURL == "" {
-		*dbURL = os.Getenv("DATABASE_URL")
+	cfg, err := LoadConfig(os.Args[1:])
+	if err != nil {
+		log.Fatalf("config: %v", err)
 	}
 
 	var db store.Store
-	if *dbURL != "" {
-		pg, err := store.Open(context.Background(), *dbURL)
+	if cfg.DB.URL != "" {
+		pg, err := store.Open(context.Background(), cfg.DB.URL)
 		if err != nil {
 			log.Fatalf("connect to database: %v", err)
 		}
@@ -33,10 +30,23 @@ func main() {
 		log.Printf("connected to postgres")
 		defer pg.Close()
 	} else {
-		log.Printf("no --db flag; running with in-memory storage (ratings and games will not persist)")
+		log.Printf("no database URL configured; running with in-memory storage (ratings and games will not persist)")
 	}
 
-	hub := server.NewHub(db)
+	hub := server.NewHub(db, server.HubOptions{
+		TrustProxy: cfg.HTTP.TrustProxy,
+		RateLimits: server.RateLimitOptions{
+			IPConnRPS:      cfg.RateLimits.IPConnRPS,
+			IPConnBurst:    cfg.RateLimits.IPConnBurst,
+			IPAuthRPS:      cfg.RateLimits.IPAuthRPS,
+			IPAuthBurst:    cfg.RateLimits.IPAuthBurst,
+			PlayerActRPS:   cfg.RateLimits.PlayerActRPS,
+			PlayerActBurst: cfg.RateLimits.PlayerActBurst,
+			MsgRPS:         cfg.RateLimits.MsgRPS,
+			MsgBurst:       cfg.RateLimits.MsgBurst,
+			IdleTTL:        cfg.RateLimits.IdleTTL,
+		},
+	})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ws", hub.HandleWebSocket)
@@ -44,6 +54,8 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(hub.ListRooms())
 	})
+	mux.HandleFunc("GET /healthz", healthzHandler)
+	mux.HandleFunc("GET /readyz", readyzHandler(db))
 
 	if pg, ok := db.(*store.Postgres); ok {
 		mux.HandleFunc("GET /api/games", listGamesHandler(pg))
@@ -53,10 +65,36 @@ func main() {
 
 	mux.Handle("/", http.FileServer(http.Dir("web/dist")))
 
-	addr := fmt.Sprintf(":%d", *port)
+	addr := fmt.Sprintf(":%d", cfg.HTTP.Port)
 	log.Printf("gochess web server listening on http://localhost%s", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// healthzHandler is a liveness probe — returns 200 as long as the process is up.
+func healthzHandler(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}
+
+// readyzHandler is a readiness probe. When a database is configured it pings it
+// with a 2 s timeout; a nil store means in-memory mode which is always ready.
+func readyzHandler(db store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.Ping(ctx); err != nil {
+			http.Error(w, "db unreachable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
 	}
 }
 

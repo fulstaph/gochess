@@ -233,3 +233,8 @@ func (db *Postgres) GetPlayerStats(ctx context.Context, playerID string) (Player
 
 // SessionTTL is how long a guest session stays valid without activity.
 const SessionTTL = 30 * 24 * time.Hour
+
+// Ping verifies the database connection is alive.
+func (db *Postgres) Ping(ctx context.Context) error {
+	return db.pool.Ping(ctx)
+}
