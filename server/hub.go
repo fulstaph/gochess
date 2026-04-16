@@ -10,34 +10,48 @@ import (
 
 	"github.com/fulstaph/gochess/chess"
 	"github.com/fulstaph/gochess/store"
+	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
 )
 
 // Hub manages all active rooms and connected players.
 type Hub struct {
-	mu          sync.Mutex
-	rooms       map[string]*Room
-	players     map[string]*Player // playerID → Player
-	sessions    *sessionManager
-	rater       *Rater
-	matchmaker  *Matchmaker
-	db          store.Store // may be nil
+	mu         sync.Mutex
+	rooms      map[string]*Room
+	players    map[string]*Player // playerID → Player
+	sessions   *sessionManager
+	rater      *Rater
+	matchmaker *Matchmaker
+	db         store.Store // may be nil
+
+	// Rate limiters (always non-nil; configured via HubOptions).
+	ipConnLim    *RateLimiter
+	ipAuthLim    *RateLimiter
+	playerActLim *RateLimiter
+	msgLim       *RateLimiter
+	trustProxy   bool
 
 	gcTicker *time.Ticker
 	done     chan struct{}
 }
 
 // NewHub creates and starts a Hub. db may be nil for an in-memory-only server.
-func NewHub(db store.Store) *Hub {
+func NewHub(db store.Store, opts HubOptions) *Hub {
+	rl := withDefaults(opts.RateLimits)
 	h := &Hub{
-		rooms:      make(map[string]*Room),
-		players:    make(map[string]*Player),
-		sessions:   newSessionManager(db),
-		rater:      newRater(),
-		matchmaker: newMatchmaker(),
-		db:         db,
-		gcTicker:   time.NewTicker(2 * time.Minute),
-		done:       make(chan struct{}),
+		rooms:        make(map[string]*Room),
+		players:      make(map[string]*Player),
+		sessions:     newSessionManager(db),
+		rater:        newRater(),
+		matchmaker:   newMatchmaker(),
+		db:           db,
+		ipConnLim:    NewRateLimiter(rate.Limit(rl.IPConnRPS), rl.IPConnBurst, rl.IdleTTL),
+		ipAuthLim:    NewRateLimiter(rate.Limit(rl.IPAuthRPS), rl.IPAuthBurst, rl.IdleTTL),
+		playerActLim: NewRateLimiter(rate.Limit(rl.PlayerActRPS), rl.PlayerActBurst, rl.IdleTTL),
+		msgLim:       NewRateLimiter(rate.Limit(rl.MsgRPS), rl.MsgBurst, rl.IdleTTL),
+		trustProxy:   opts.TrustProxy,
+		gcTicker:     time.NewTicker(2 * time.Minute),
+		done:         make(chan struct{}),
 	}
 	if db != nil {
 		go h.sessionCleanupLoop()
@@ -46,6 +60,10 @@ func NewHub(db store.Store) *Hub {
 	}
 	go h.gcLoop()
 	go h.raterCleanupLoop()
+	go h.ipConnLim.RunJanitor(h.done)
+	go h.ipAuthLim.RunJanitor(h.done)
+	go h.playerActLim.RunJanitor(h.done)
+	go h.msgLim.RunJanitor(h.done)
 	return h
 }
 
@@ -57,6 +75,14 @@ func (h *Hub) Stop() {
 
 // HandleWebSocket upgrades an HTTP connection and runs the player session.
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Per-IP connection rate limit — checked before the WebSocket upgrade so
+	// a flooding client never gets as far as session resolution.
+	ip := clientIP(r, h.trustProxy)
+	if !h.ipConnLim.Allow(ip) {
+		http.Error(w, "too many connections", http.StatusTooManyRequests)
+		return
+	}
+
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: []string{"*"},
 	})
@@ -77,6 +103,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		old.close()
 	}
 	p := newPlayer(playerID, displayName, conn, h)
+	p.remoteIP = ip
 	h.players[playerID] = p
 	h.mu.Unlock()
 
@@ -97,6 +124,20 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 // dispatch routes a client message to the appropriate handler.
 func (h *Hub) dispatch(p *Player, msg ClientMessage) {
+	// Rate-limit expensive or abuse-prone message types before routing.
+	switch msg.Type {
+	case "login", "register":
+		if !h.ipAuthLim.Allow(p.remoteIP) {
+			sendRateLimited(p, msg.Type)
+			return
+		}
+	case "create_room", "find_game":
+		if !h.playerActLim.Allow(p.ID) {
+			sendRateLimited(p, msg.Type)
+			return
+		}
+	}
+
 	switch msg.Type {
 	case "create_room":
 		h.handleCreateRoom(p, msg)
