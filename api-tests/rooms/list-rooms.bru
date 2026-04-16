@@ -1,0 +1,45 @@
+meta {
+  name: List Active Rooms
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/rooms
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("response body is an array", function() {
+    expect(res.body).to.be.an('array');
+  });
+
+  test("content-type includes application/json", function() {
+    expect(res.headers['content-type']).to.include('application/json');
+  });
+
+  test("each room has required fields", function() {
+    res.body.forEach(function(room) {
+      expect(room).to.have.property('roomId');
+      expect(room).to.have.property('status');
+      expect(room).to.have.property('whiteName');
+      expect(room).to.have.property('blackName');
+    });
+  });
+
+  test("room status is a known value", function() {
+    var validStatuses = ['waiting', 'playing', 'finished'];
+    res.body.forEach(function(room) {
+      expect(validStatuses).to.include(room.status);
+    });
+  });
+}

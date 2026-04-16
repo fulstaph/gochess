@@ -1,144 +1,215 @@
 # Gochess
 
-A small terminal chess game written in Go. It includes full move validation (including check rules), draw rules, and a Bubble Tea TUI. The core rules live in a reusable `chess` package so you can embed the engine elsewhere.
+A chess engine written in Go with two frontends: a terminal UI (Bubble Tea) and a browser-based web UI (TypeScript). The core rules live in a reusable `chess` package.
 
 ## Features
 
-- Legal move generation with check validation
-- Castling (king/queen side), en passant, and promotion
+- Legal move generation with full check validation
+- Castling (king/queen side), en passant, and pawn promotion
 - Check, checkmate, and stalemate detection
-- Draw rules: fifty-move and threefold repetition
-- Bubble Tea TUI with human-friendly input formats
-- ANSI-colored board with last-move highlights and move list sidebar
+- Draw rules: fifty/seventy-five-move rule, threefold/fivefold repetition
+- Minimax AI with alpha-beta pruning, quiescence search, and piece-square tables
+- Terminal UI (Bubble Tea) with ANSI-colored board and move list sidebar
+- Web UI (TypeScript) with click-to-move, legal move highlights, and promotion dialog
+- WebSocket backend — designed for future PvP multiplayer
 
 ## Quick Start
 
-Requirements:
-- Go 1.25+ (see `go.mod`)
+Requirements: Go 1.22+, Node.js (for the web UI only)
 
-Run the game:
+If you have [Task](https://taskfile.dev) installed, most commands are one-liners:
+
+```bash
+task tui          # run terminal UI
+task web          # build frontend + run web server
+task test         # run all tests
+task build        # build both binaries
+task --list       # see all available tasks
+```
+
+Otherwise use the commands below directly.
+
+### Terminal UI
 
 ```bash
 go run .
 ```
 
-Run tests:
+### Web UI
+
+Build the frontend (one-time):
+
+```bash
+cd web && npm install && npm run build
+```
+
+Run the server:
+
+```bash
+go run ./cmd/web
+```
+
+Then open `http://localhost:8080` in your browser.
+
+### Tests
 
 ```bash
 go test ./...
 ```
 
-## How To Play
+## Playing via Terminal
 
 The TUI renders the board and accepts commands from the prompt at the bottom.
 
-Commands:
-- `help` : show input formats and commands
-- `resign` : resign the game
-- `quit` / `exit` : quit immediately
-- `ai [depth]` : let the computer pick a move (depth 1-4, default 2)
-- `q` or `Ctrl+C` : quit immediately
-- `Up/Down` : cycle recent command history
-- `v` : flip board orientation
-- `p` : toggle Unicode/ASCII pieces
-- `b` : cycle piece size
+**Commands:**
 
-### AI Mode (Executable Flags)
+- `help` — show input formats and commands
+- `resign` — resign the game
+- `quit` / `exit` — quit immediately
+- `ai [depth]` — let the AI pick a move (depth 1–4, default 2)
+- `q` or `Ctrl+C` — quit immediately
+- `Up/Down` — cycle command history
+- `v` — flip board orientation
+- `p` — toggle Unicode/ASCII pieces
+- `b` — cycle piece size
 
-You can start the game with the AI controlling one or both sides:
+**Flags:**
 
 ```bash
-go run . -ai=black -depth=2
+go run . -ai=black -depth=2 -pieces=unicode -bigpieces=2x2
 ```
 
-Options:
-- `-ai=white|black|both|none` (default `black`)
-- `-depth=1..4` (default `2`)
-- `-pieces=unicode|ascii` (default `unicode`)
-- `-bigpieces=off|2x2|3x3` (default `2x2`)
+| Flag         | Default   | Description                               |
+| ------------ | --------- | ----------------------------------------- |
+| `-ai`        | `black`   | AI side: `white`, `black`, `both`, `none` |
+| `-depth`     | `2`       | AI search depth (1–4)                     |
+| `-pieces`    | `unicode` | Piece style: `unicode`, `ascii`           |
+| `-bigpieces` | `2x2`     | Piece size: `off`, `2x2`, `3x3`           |
 
-### Move Input Formats
+## Playing via Browser
 
-Supported formats:
-- `e2e4`
-- `e2 e4`
-- `e2-e4`
+The web frontend connects to the Go server via WebSocket. All game logic runs on the server; the browser only handles rendering and user input.
+
+**How to play:**
+
+1. Click a piece to select it — legal destination squares are highlighted
+2. Click a highlighted square to move
+3. For pawn promotion, a dialog appears to choose the piece
+4. Use the toolbar to flip the board, start a new game, or resign
+
+**Flags:**
+
+```bash
+go run ./cmd/web -port=8080 -ai=black -depth=2
+```
+
+| Flag     | Default | Description                               |
+| -------- | ------- | ----------------------------------------- |
+| `-port`  | `8080`  | HTTP port                                 |
+| `-ai`    | `black` | AI side: `white`, `black`, `both`, `none` |
+| `-depth` | `2`     | AI search depth (1–4)                     |
+
+**Frontend development (watch mode):**
+
+```bash
+cd web && npm run watch
+```
+
+## Move Input Formats
+
+Supported formats (terminal and WebSocket API):
+
+- `e2e4`, `e2 e4`, `e2-e4`
 
 Promotion:
-- `e7e8q` or `e7e8=Q` (case-insensitive, accepts `q`, `r`, `b`, `n`)
-- If no promotion piece is specified, it defaults to a queen.
+
+- `e7e8q` or `e7e8=Q` (case-insensitive; `q`, `r`, `b`, `n`)
+- Defaults to queen if no piece specified
 
 Castling:
-- `O-O` or `O-O-O`
-- `0-0` or `0-0-0` also works
 
-### Board Display
+- `O-O` or `O-O-O` (also `0-0` / `0-0-0`)
 
-- Uppercase pieces are White: `K Q R B N P`
-- Lowercase pieces are Black: `k q r b n p`
-- `.` denotes an empty square
-- Unicode chess pieces are used by default (`-pieces=ascii` to use letters)
-- Piece size defaults to `2x2` (`-bigpieces=off` for normal size)
-- The last move squares are highlighted
-- A move list sidebar shows the current game in coordinate notation
-- A help panel and input history make common commands easier to discover
-- The board orients to the human player's side when AI controls the other
+## WebSocket Protocol
+
+Connect to `ws://localhost:8080/ws`. All messages are JSON with a `type` field.
+
+**Client → Server:**
+
+| `type`     | Fields                     | Description      |
+| ---------- | -------------------------- | ---------------- |
+| `move`     | `from`, `to`, `promotion?` | Make a move      |
+| `new_game` | `aiMode`, `aiDepth`        | Start a new game |
+| `resign`   | —                          | Resign the game  |
+
+**Server → Client:**
+
+| `type`     | Description                                        |
+| ---------- | -------------------------------------------------- |
+| `state`    | Full game state (board, turn, legal moves, ...)    |
+| `thinking` | AI is computing a move                             |
+| `error`    | Invalid move or other error                        |
+
+The `state` message is sent on every state change (after each move, new game, or resign).
 
 ## Package Layout
 
-- `main.go`
-  - Program entry and flag parsing
-- `tui.go`
-  - Bubble Tea model, input handling, and AI turns
-- `ui.go`
-  - Board rendering and move list sidebar
-- `game_helpers.go`
-  - Shared helpers for move history, repetition tracking, and game-over checks
-- `chess/state.go`
-  - `GameState`, `Move`, and initial state setup
-- `chess/movegen.go`
-  - Pseudo-legal and legal move generation
-- `chess/rules.go`
-  - Move application and check/attack detection
-- `chess/parse.go`
-  - Input parsing and legal move matching
-- `chess/helpers.go`
-  - Utility helpers (piece types, bounds, color names)
-- `chess/position.go`
-  - Position key and draw rule helpers
-- `chess/ai.go`
-  - Simple AI search and evaluation
-- `chess/format.go`
-  - Move formatting helpers
-- `chess/chess_test.go`
-  - Tests for parsing, rules, and checkmate logic
+```text
+chess/          Core engine (rules, move gen, AI) — importable as a library
+  state.go      GameState, Move, initial position
+  movegen.go    Legal and pseudo-legal move generation
+  rules.go      Move application, check/attack detection
+  parse.go      Input parsing and legal move matching
+  ai.go         Minimax with alpha-beta pruning and quiescence search
+  position.go   Position key and draw rule helpers
+  helpers.go    Piece type utilities and color names
+  format.go     Move formatting (coordinate notation, castling)
+  chess_test.go Engine unit tests
+
+server/         HTTP/WebSocket server
+  server.go     GameSession: state management, move application, game-over logic
+  handlers.go   WebSocket upgrade, message loop, async AI turns
+  types.go      JSON message structs
+  server_test.go Server unit tests
+
+cmd/web/        Web server entry point
+  main.go       Flag parsing, route registration, static file serving
+
+web/            TypeScript frontend
+  src/
+    main.ts     App entry point, UI wiring
+    socket.ts   WebSocket client with auto-reconnect
+    board.ts    DOM board rendering, click-to-move, promotion dialog
+    types.ts    TypeScript interfaces matching the WebSocket protocol
+  dist/
+    index.html  Page markup
+    style.css   Dark-themed styles
+
+main.go         Terminal UI entry point
+tui.go          Bubble Tea model, input handling, AI turn management
+ui.go           Board rendering, move list sidebar
+game_helpers.go Move history, repetition tracking, game-over detection
+```
 
 ## Engine Notes
 
-- The engine enforces check rules; illegal moves that leave your king in check are rejected.
-- Castling requires empty squares between king and rook and no traversal through check.
-- En passant is available immediately after a qualifying pawn double-advance.
-- Game ends are detected by checking for zero legal moves:
-  - In check: checkmate
-  - Not in check: stalemate
-- Draws are declared automatically on fifty-move or threefold repetition.
+- `ApplyMove` is immutable — it returns a new `GameState` without mutating the original.
+- Check is enforced by generating pseudo-legal moves and filtering out those that leave the king in check.
+- Castling requires: no pieces between king and rook, king not in check, king not passing through an attacked square.
+- En passant is available only on the move immediately following a qualifying double-pawn advance.
+- Game ends when there are zero legal moves (checkmate if in check, stalemate if not), or by the 75-move rule / fivefold repetition.
 
 ## Limitations
 
-This is a compact, terminal-focused chess engine. It does not currently include:
-- PGN/FEN import/export
-- Clocks or time controls
-- Advanced AI evaluation (only material + search)
-- Undo/redo or move takebacks
-
-## Development Tips
-
-- The `chess` package is designed to be embeddable; you can build alternate UIs on top of it.
-- If you add UI code, keep game rules and state mutations inside `chess` to avoid rule drift.
+- No PGN/FEN import/export
+- No clocks or time controls
+- No undo/redo
+- Single game session per server process (no lobbies or room management yet)
 
 ## Roadmap Ideas
 
 - PGN/FEN support
-- Stronger AI (piece-square tables, time controls, deeper search)
+- PvP multiplayer (the WebSocket architecture is already ready — add room management)
+- Time controls
+- Stronger AI (iterative deepening, transposition table, opening book)
 - Save/load games
-- Alternative UIs (web or graphical)

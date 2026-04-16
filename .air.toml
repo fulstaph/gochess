@@ -1,0 +1,43 @@
+# Air configuration for gochess web server hot reload
+# https://github.com/air-verse/air
+
+[build]
+  # Build command for the web server
+  cmd = "go build -o ./tmp/gochess-web ./cmd/web"
+  entrypoint = "./tmp/gochess-web"
+  # Pass flags to the running binary (override with AIR_ARGS env var)
+  args_bin = ["-port=8080", "-ai=black", "-depth=2"]
+  # Trigger rebuild on changes to these file types
+  include_ext = ["go"]
+  # Watch these directories
+  include_dir = ["chess", "server", "cmd"]
+  # Ignore everything else
+  exclude_dir = ["tmp", "web", "vendor"]
+  exclude_file = []
+  exclude_regex = ["_test\\.go"]
+  # Only rebuild when source actually changes
+  exclude_unchanged = true
+  follow_symlinks = false
+  # Delay before triggering rebuild (debounce)
+  delay = 300 # ms
+  kill_delay = "1s"
+  send_interrupt = true
+  stop_on_error = false
+  rerun = false
+
+[log]
+  main_only = false
+  time = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true
+
+[misc]
+  clean_on_exit = true

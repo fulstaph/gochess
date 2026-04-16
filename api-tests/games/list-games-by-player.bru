@@ -1,0 +1,45 @@
+meta {
+  name: List Games by Player
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/games
+  body: none
+  auth: none
+}
+
+params:query {
+  player: {{knownPlayerId}}
+  limit: 20
+  offset: 0
+}
+
+headers {
+  Accept: application/json
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("response body is an array", function() {
+    expect(res.body).to.be.an('array');
+  });
+
+  test("result count does not exceed limit", function() {
+    expect(res.body.length).to.be.at.most(20);
+  });
+
+  test("each game has required fields", function() {
+    res.body.forEach(function(game) {
+      expect(game).to.have.property('ID');
+      expect(game).to.have.property('WhiteID');
+      expect(game).to.have.property('BlackID');
+      expect(game).to.have.property('Result');
+      expect(game).to.have.property('Rated');
+    });
+  });
+}

@@ -1,0 +1,25 @@
+meta {
+  name: Get Player - Not Found Returns 404
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/players/00000000000000000000000000000000
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+tests {
+  test("returns 404 for unknown player", function() {
+    expect(res.status).to.equal(404);
+  });
+
+  test("body contains not found", function() {
+    expect(res.body.toLowerCase()).to.include('not found');
+  });
+}

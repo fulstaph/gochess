@@ -203,3 +203,28 @@ func TestPositionKeyIgnoresUncapturableEnPassant(t *testing.T) {
 		t.Fatalf("expected uncapturable en passant square to be ignored in position key")
 	}
 }
+
+func TestQuiescenceDepthLimit(t *testing.T) {
+	// Position with many captures available; quiescence must terminate within maxQSDepth.
+	// We use a simple position where pieces can capture each other repeatedly.
+	// The test just verifies BestMove returns without hanging or panicking.
+	state := InitialState()
+	// Apply a few moves to get pieces in the center where captures can occur.
+	for _, mv := range []string{"e2e4", "d7d5", "e4d5", "d8d5", "d2d4", "d5e4"} {
+		state = applyMoveInput(t, state, mv)
+	}
+	// The position now has captures available. BestMove must return normally.
+	_, ok := BestMove(state, 3)
+	if !ok {
+		t.Fatal("expected a legal move to exist")
+	}
+}
+
+func TestQuiescenceAtDepthZeroReturnsStaticEval(t *testing.T) {
+	state := InitialState()
+	score := quiescence(state, -inf, inf, 0)
+	staticEval := evaluate(state)
+	if score != staticEval {
+		t.Fatalf("quiescence at depth 0 should return static eval %d, got %d", staticEval, score)
+	}
+}

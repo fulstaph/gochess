@@ -1,0 +1,25 @@
+meta {
+  name: Get Game - Not Found Returns 404
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/games/00000000000000000000000000000000
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+tests {
+  test("returns 404 for unknown game", function() {
+    expect(res.status).to.equal(404);
+  });
+
+  test("body contains not found", function() {
+    expect(res.body.toLowerCase()).to.include('not found');
+  });
+}

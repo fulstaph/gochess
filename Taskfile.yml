@@ -1,0 +1,147 @@
+version: "3"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmd: task --list
+
+  # ── Terminal UI ────────────────────────────────────────────────
+
+  tui:
+    desc: Run the terminal UI (AI plays black, depth 2)
+    cmd: go run . -ai={{.ai | default "black"}} -depth={{.depth | default "2"}}
+
+  # ── Web UI ─────────────────────────────────────────────────────
+
+  web:
+    desc: Build frontend then run the web server on :8080
+    deps: [web:build]
+    cmd: go run ./cmd/web -port={{.port | default "8080"}} -ai={{.ai | default "black"}} -depth={{.depth | default "2"}}
+
+  web:server:
+    desc: Run web server without rebuilding the frontend
+    cmd: go run ./cmd/web -port={{.port | default "8080"}} -ai={{.ai | default "black"}} -depth={{.depth | default "2"}}
+
+  web:build:
+    desc: Build the TypeScript frontend
+    dir: web
+    cmds:
+      - npm install --prefer-offline
+      - npm run build
+
+  web:watch:
+    desc: Watch and rebuild the TypeScript frontend on changes
+    dir: web
+    cmd: npm run watch
+
+  dev:
+    desc: "Dev mode: hot-reload Go server (air) + watch TypeScript (esbuild) — runs both concurrently"
+    deps: [dev:install-air]
+    cmds:
+      - bash -c 'trap "kill 0" INT TERM; (cd web && npm install --prefer-offline --silent && npm run watch) & air; wait'
+
+  dev:run:
+    desc: "Dev mode: hot-reload Go server (air) + watch TypeScript. Pass db=<dsn> to enable Postgres."
+    deps: [dev:install-air]
+    env:
+      DATABASE_URL: "{{.db}}"
+    cmds:
+      - bash -c 'trap "kill 0" INT TERM; (cd web && npm install --prefer-offline --silent && npm run watch) & air; wait'
+
+  dev:install-air:
+    desc: Install air if not already present
+    cmd: which air > /dev/null 2>&1 || go install github.com/air-verse/air@latest
+    silent: true
+
+  # ── Tests ──────────────────────────────────────────────────────
+
+  test:
+    desc: Run all Go tests
+    cmd: go test ./...
+
+  test:verbose:
+    desc: Run all Go tests with verbose output
+    cmd: go test -v ./...
+
+  test:cover:
+    desc: Run Go tests with coverage report
+    cmd: go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out
+
+  test:api:
+    desc: "Run Bruno API tests (server must be running: task web:server)"
+    dir: api-tests
+    vars:
+      ENV: '{{.env | default "local"}}'
+    cmd: bru run --env {{.ENV}}
+
+  test:api:install:
+    desc: Install Bruno CLI if not present
+    cmd: which bru > /dev/null 2>&1 || npm install -g @usebruno/cli
+    silent: true
+
+  # ── Lint ───────────────────────────────────────────────────────
+
+  lint:
+    desc: "Lint everything (Go + TypeScript)"
+    deps: [lint:go, lint:ts]
+
+  lint:go:
+    desc: Run golangci-lint on Go code
+    cmd: golangci-lint run ./...
+
+  lint:go:fix:
+    desc: Run golangci-lint and auto-fix where possible
+    cmd: golangci-lint run --fix ./...
+
+  lint:ts:
+    desc: Type-check TypeScript (tsc --noEmit)
+    dir: web
+    cmd: npx tsc --noEmit
+
+  lint:install:
+    desc: Install golangci-lint if not present
+    cmd: which golangci-lint > /dev/null 2>&1 || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    silent: true
+
+  # ── CI (mirrors the GitHub Actions pipeline locally) ───────────
+
+  ci:
+    desc: "Run the full CI pipeline locally: build, lint, test, frontend type-check + build"
+    deps: [ci:go, ci:frontend]
+
+  ci:go:
+    desc: "Go CI: build → lint → test"
+    cmds:
+      - go build ./...
+      - golangci-lint run ./...
+      - go test ./...
+
+  ci:frontend:
+    desc: "Frontend CI: type-check → build"
+    dir: web
+    cmds:
+      - npm ci
+      - npx tsc --noEmit
+      - npm run build
+
+  # ── Build ──────────────────────────────────────────────────────
+
+  build:
+    desc: Build all binaries (tui + web server)
+    deps: [build:tui, build:web]
+
+  build:tui:
+    desc: Build the terminal UI binary → ./gochess
+    cmd: go build -o gochess .
+
+  build:web:
+    desc: Build the web server binary → ./gochess-web
+    cmd: go build -o gochess-web ./cmd/web
+
+  # ── Misc ───────────────────────────────────────────────────────
+
+  clean:
+    desc: Remove built binaries and frontend bundle
+    cmds:
+      - rm -f gochess gochess-web
+      - rm -f web/dist/bundle.js web/dist/bundle.js.map

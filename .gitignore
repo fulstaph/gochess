@@ -1,1 +1,13 @@
 .claude/
+
+# binaries
+gochess
+gochess-web
+
+# air hot-reload build output
+tmp/
+
+# frontend build output
+web/dist/bundle.js
+web/dist/bundle.js.map
+web/node_modules/

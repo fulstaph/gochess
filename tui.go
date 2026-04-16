@@ -2,13 +2,30 @@ package main
 
 import (
 	"fmt"
+	"maps"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fulstaph/gochess/chess"
+	gm "github.com/fulstaph/gochess/game"
 )
+
+const (
+	moveSourceHuman = "You"
+	moveSourceAI    = "AI"
+)
+
+type undoSnapshot struct {
+	state    chess.GameState
+	moveHist []string
+	rawMoves []chess.Move
+	reps     map[string]int
+	lastMove chess.Move
+	hasLast  bool
+}
 
 type model struct {
 	state          chess.GameState
@@ -19,6 +36,7 @@ type model struct {
 	lastMoveSource string
 	repetitions    map[string]int
 	moveHistory    []string
+	rawMoves       []chess.Move // for PGN export
 	input          textinput.Model
 	errMsg         string
 	notice         string
@@ -33,6 +51,7 @@ type model struct {
 	useUnicode     bool
 	pieceScale     int
 	thinking       bool
+	undoStack      []undoSnapshot
 }
 
 type aiMoveMsg struct {
@@ -57,19 +76,19 @@ func newModel(aiMode aiSide, aiDepth int, useUnicode bool, pieceScale int) model
 		aiDepth:      aiDepth,
 		repetitions:  map[string]int{chess.PositionKey(state): 1},
 		moveHistory:  make([]string, 0, 64),
+		rawMoves:     make([]chess.Move, 0, 64),
 		input:        input,
 		history:      make([]string, 0, 32),
 		historyIndex: -1,
 		perspective:  playerPerspective(aiMode),
 		useUnicode:   useUnicode,
 		pieceScale:   pieceScale,
-		thinking:     false,
+		thinking:     aiControls(aiMode, state.Turn()),
 	}
 }
 
 func (m model) Init() tea.Cmd {
 	if aiControls(m.aiMode, m.state.Turn()) {
-		m.thinking = true
 		return aiMoveCmd(m.state, m.aiDepth)
 	}
 	return nil
@@ -86,7 +105,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyGameOver()
 			return m, nil
 		}
-		cmd := m.applyMove(msg.move, "AI")
+		cmd := m.applyMove(msg.move, moveSourceAI)
 		return m, cmd
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -170,20 +189,39 @@ func (m *model) handleInput(input string) tea.Cmd {
 	case "quit", "exit":
 		return tea.Quit
 	case "help":
-		m.notice = "Examples: e2e4, e7e8q, O-O, ai [depth]"
+		m.notice = "Examples: e2e4, e7e8q, O-O, ai [depth], undo, fen, pgn, new, load <file>"
 		return nil
 	case "resign":
 		m.result = fmt.Sprintf("%s resigns. %s wins.", chess.ColorName(m.state.Turn()), chess.ColorName(-m.state.Turn()))
 		m.gameOver = true
 		m.input.Blur()
 		return nil
+	case "undo":
+		return m.undoMove()
+	case "fen":
+		m.notice = chess.ToFEN(m.state)
+		return nil
+	case "pgn":
+		result := m.result
+		if result == "" {
+			result = "*"
+		}
+		headers := map[string]string{"Result": result}
+		m.notice = chess.FormatPGN(m.rawMoves, chess.InitialState(), headers, result)
+		return nil
+	case "new":
+		return m.newGame()
+	}
+
+	fields := strings.Fields(lower)
+
+	if len(fields) >= 2 && fields[0] == "load" {
+		return m.loadPGN(strings.TrimSpace(input[len("load "):]))
 	}
 
 	if m.gameOver {
 		return nil
 	}
-
-	fields := strings.Fields(lower)
 	if len(fields) > 0 && fields[0] == "ai" {
 		depth := m.aiDepth
 		if len(fields) > 1 {
@@ -203,21 +241,45 @@ func (m *model) handleInput(input string) tea.Cmd {
 		m.errMsg = err.Error()
 		return nil
 	}
-	return m.applyMove(move, "You")
+	return m.applyMove(move, moveSourceHuman)
+}
+
+// currentSnapshot captures a copy of all mutable state needed to restore the current position.
+func (m *model) currentSnapshot() undoSnapshot {
+	histCopy := make([]string, len(m.moveHistory))
+	copy(histCopy, m.moveHistory)
+	rawCopy := make([]chess.Move, len(m.rawMoves))
+	copy(rawCopy, m.rawMoves)
+	return undoSnapshot{
+		state:    m.state,
+		moveHist: histCopy,
+		rawMoves: rawCopy,
+		reps:     maps.Clone(m.repetitions),
+		lastMove: m.lastMove,
+		hasLast:  m.hasLastMove,
+	}
 }
 
 func (m *model) applyMove(move chess.Move, source string) tea.Cmd {
 	m.errMsg = ""
 	m.notice = ""
-	recordMove(&m.moveHistory, m.state, move)
+
+	if source == moveSourceHuman {
+		m.undoStack = append(m.undoStack, m.currentSnapshot())
+	}
+
+	gm.RecordMove(&m.moveHistory, m.state, move)
+	m.rawMoves = append(m.rawMoves, move)
 	m.state = chess.ApplyMove(m.state, move)
 	m.lastMove = move
 	m.hasLastMove = true
 	m.lastMoveSource = source
-	repCount := updateRepetition(m.repetitions, m.state)
-	m.notice = claimableDrawNotice(m.state, repCount)
+	key := chess.PositionKey(m.state)
+	m.repetitions[key]++
+	repCount := m.repetitions[key]
+	m.notice = gm.ClaimableDraw(m.state, repCount)
 
-	gameOver, result := checkGameOver(m.state, repCount)
+	gameOver, result := gm.CheckGameOver(m.state, repCount)
 	if gameOver {
 		m.result = result
 		m.gameOver = true
@@ -234,7 +296,7 @@ func (m *model) applyMove(move chess.Move, source string) tea.Cmd {
 
 func (m *model) applyGameOver() {
 	repCount := m.repetitions[chess.PositionKey(m.state)]
-	gameOver, result := checkGameOver(m.state, repCount)
+	gameOver, result := gm.CheckGameOver(m.state, repCount)
 	if gameOver {
 		m.result = result
 		m.gameOver = true
@@ -318,4 +380,89 @@ func (m *model) cyclePieceScale() {
 	default:
 		m.pieceScale = 1
 	}
+}
+
+func (m *model) newGame() tea.Cmd {
+	state := chess.InitialState()
+	m.state = state
+	m.repetitions = map[string]int{chess.PositionKey(state): 1}
+	m.moveHistory = make([]string, 0, 64)
+	m.rawMoves = make([]chess.Move, 0, 64)
+	m.undoStack = nil
+	m.hasLastMove = false
+	m.gameOver = false
+	m.result = ""
+	m.notice = ""
+	m.errMsg = ""
+	m.input.Focus()
+	if aiControls(m.aiMode, state.Turn()) {
+		m.thinking = true
+		return aiMoveCmd(state, m.aiDepth)
+	}
+	return nil
+}
+
+func (m *model) loadPGN(path string) tea.Cmd {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		m.errMsg = fmt.Sprintf("load: %v", err)
+		return nil
+	}
+	moves, initialState, _, err := chess.ParsePGN(string(data))
+	if err != nil {
+		m.errMsg = fmt.Sprintf("load: %v", err)
+		return nil
+	}
+
+	// Rebuild state and undo stack by replaying all moves.
+	m.state = initialState
+	m.moveHistory = nil
+	m.rawMoves = nil
+	m.repetitions = make(map[string]int)
+	m.undoStack = nil
+	m.gameOver = false
+	m.result = ""
+	m.hasLastMove = false
+
+	for _, mv := range moves {
+		m.undoStack = append(m.undoStack, m.currentSnapshot())
+
+		gm.RecordMove(&m.moveHistory, m.state, mv)
+		m.rawMoves = append(m.rawMoves, mv)
+		m.state = chess.ApplyMove(m.state, mv)
+		m.lastMove = mv
+		m.hasLastMove = true
+
+		key := chess.PositionKey(m.state)
+		m.repetitions[key]++
+	}
+
+	m.notice = fmt.Sprintf("Loaded %d moves from %s. Use undo to step back.", len(moves), path)
+	return nil
+}
+
+func (m *model) undoMove() tea.Cmd {
+	if len(m.undoStack) == 0 {
+		m.errMsg = "Nothing to undo."
+		return nil
+	}
+	if m.thinking {
+		m.errMsg = "Cannot undo while AI is thinking."
+		return nil
+	}
+	last := len(m.undoStack) - 1
+	snap := m.undoStack[last]
+	m.undoStack = m.undoStack[:last]
+	m.state = snap.state
+	m.moveHistory = snap.moveHist
+	m.rawMoves = snap.rawMoves
+	m.repetitions = snap.reps
+	m.lastMove = snap.lastMove
+	m.hasLastMove = snap.hasLast
+	m.gameOver = false
+	m.result = ""
+	m.notice = ""
+	m.errMsg = ""
+	m.input.Focus()
+	return nil
 }

@@ -1,0 +1,25 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck      # unchecked errors
+    - gosimple      # simplification suggestions
+    - govet         # go vet checks
+    - ineffassign   # unused assignments
+    - staticcheck   # static analysis (includes SA, S, ST families)
+    - unused        # unused code
+    - gofmt         # formatting
+    - goimports     # import ordering
+    - misspell      # common spelling mistakes
+    - bodyclose     # HTTP response body not closed
+    - noctx         # HTTP requests without context
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/fulstaph/gochess
+
+issues:
+  exclude-rules:
+    # Test files don't need context on every call.
+    - path: _test\.go
+      linters: [noctx]

@@ -1,0 +1,39 @@
+meta {
+  name: Get Player by ID
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/players/{{knownPlayerId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.status).to.equal(200);
+  });
+
+  test("response has required fields", function() {
+    expect(res.body).to.have.property('id');
+    expect(res.body).to.have.property('displayName');
+    expect(res.body).to.have.property('rating');
+    expect(res.body).to.have.property('isGuest');
+    expect(res.body).to.have.property('wins');
+    expect(res.body).to.have.property('losses');
+    expect(res.body).to.have.property('draws');
+  });
+
+  test("rating is a number", function() {
+    expect(res.body.rating).to.be.a('number');
+  });
+
+  test("isGuest is a boolean", function() {
+    expect(res.body.isGuest).to.be.a('boolean');
+  });
+}

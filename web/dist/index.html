@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>gochess</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="site-header">
+      <a class="site-logo" href="#">
+        <svg class="logo-knight" viewBox="0 0 45 45" width="28" height="28">
+          <g fill="#b58863" stroke="#b58863" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" style="fill:#f0d9b5;stroke:#b58863"/>
+            <path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" style="fill:#f0d9b5;stroke:#b58863"/>
+            <path d="M 9.5 25.5 A 0.5 0.5 0 1 1 8.5,25.5 A 0.5 0.5 0 1 1 9.5 25.5 z" style="fill:#b58863;stroke:#b58863"/>
+            <path d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)" style="fill:#b58863;stroke:#b58863"/>
+          </g>
+        </svg>
+        <span class="logo-text">gochess</span>
+      </a>
+      <div class="header-right">
+        <span id="lobby-display-name" class="header-username"></span>
+      </div>
+    </header>
+
+    <!-- ──────── Lobby ──────── -->
+    <div id="lobby" class="lobby">
+      <div class="lobby-inner">
+        <div class="lobby-play">
+          <h2 class="section-title">Play</h2>
+          <div class="tc-grid" id="tc-grid">
+            <button class="tc-card" data-tc="bullet1">
+              <span class="tc-icon">⚡</span>
+              <span class="tc-label">Bullet</span>
+              <span class="tc-value">1+0</span>
+            </button>
+            <button class="tc-card" data-tc="blitz3">
+              <span class="tc-icon">🔥</span>
+              <span class="tc-label">Blitz</span>
+              <span class="tc-value">3+0</span>
+            </button>
+            <button class="tc-card" data-tc="blitz5">
+              <span class="tc-icon">⚡</span>
+              <span class="tc-label">Blitz</span>
+              <span class="tc-value">5+3</span>
+            </button>
+            <button class="tc-card" data-tc="rapid10">
+              <span class="tc-icon">⏱</span>
+              <span class="tc-label">Rapid</span>
+              <span class="tc-value">10+0</span>
+            </button>
+          </div>
+          <!-- hidden quick-match elements, kept for JS compat -->
+          <select id="quick-match-tc" class="visually-hidden" aria-label="Time control for quick match">
+            <option value="bullet1">Bullet 1+0</option>
+            <option value="blitz3">Blitz 3+0</option>
+            <option value="blitz5" selected>Blitz 5+3</option>
+            <option value="rapid10">Rapid 10+0</option>
+          </select>
+          <button type="button" id="quick-match-btn" class="visually-hidden">Quick Match</button>
+          <span id="match-waiting" class="match-waiting hidden"></span>
+
+          <div class="lobby-divider">
+            <span>or</span>
+          </div>
+          <button type="button" id="lobby-create-btn" class="btn-outline-full">
+            ⚙ Custom game
+          </button>
+        </div>
+
+        <div class="lobby-rooms">
+          <div class="lobby-rooms-header">
+            <h2 class="section-title">Open games</h2>
+            <button type="button" id="lobby-refresh-btn" class="btn-icon-sm" title="Refresh">↻</button>
+          </div>
+          <div id="lobby-room-list" class="room-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ──────── Settings bar ──────── -->
+    <div id="settings-bar" class="settings-bar hidden">
+      <label title="Sound effects">
+        <input type="checkbox" id="sound-toggle" checked>
+        <span>Sound</span>
+      </label>
+      <label title="Board theme">
+        <span>Board</span>
+        <select id="theme-select">
+          <option value="brown" selected>Brown</option>
+          <option value="green">Green</option>
+          <option value="blue">Blue</option>
+          <option value="grey">Grey</option>
+        </select>
+      </label>
+      <label title="Auto-flip board">
+        <input type="checkbox" id="auto-flip-toggle">
+        <span>Auto-flip</span>
+      </label>
+    </div>
+
+    <!-- ──────── Game area ──────── -->
+    <div id="game-area" class="game-area hidden">
+
+      <!-- Banners (draw offer, etc.) -->
+      <div id="draw-offer-banner" class="draw-offer-banner hidden">
+        <span class="draw-offer-text">½ Opponent offers a draw</span>
+        <div class="draw-offer-btns">
+          <button type="button" id="draw-accept-btn" class="btn-sm btn-accept">Accept</button>
+          <button type="button" id="draw-decline-btn" class="btn-sm btn-decline">Decline</button>
+        </div>
+      </div>
+
+      <div class="game-layout">
+        <!-- ── Board column ── -->
+        <div class="board-column">
+
+          <!-- Opponent panel (top) -->
+          <div class="player-panel player-panel-top" id="player-panel-top">
+            <div class="player-identity">
+              <div class="player-avatar" id="avatar-top"></div>
+              <span class="player-name" id="player-name-top">Opponent</span>
+            </div>
+            <div class="player-clock" id="clock-top-slot">
+              <!-- clock element inserted here by JS -->
+            </div>
+          </div>
+
+          <!-- Board -->
+          <div class="board-wrapper">
+            <div id="board" class="board"></div>
+            <div id="thinking" class="thinking hidden">
+              <div class="thinking-dots">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Your panel (bottom) -->
+          <div class="player-panel player-panel-bottom" id="player-panel-bottom">
+            <div class="player-identity">
+              <div class="player-avatar player-avatar-you" id="avatar-bottom"></div>
+              <span class="player-name" id="player-name-bottom">You</span>
+            </div>
+            <div class="player-clock" id="clock-bottom-slot">
+              <!-- clock element inserted here by JS -->
+            </div>
+          </div>
+
+          <!-- Controls -->
+          <div class="game-controls">
+            <button type="button" id="flip-btn" class="ctrl-btn" title="Flip board">⇅</button>
+            <button type="button" id="undo-btn" class="ctrl-btn hidden" title="Undo">↩</button>
+            <button type="button" id="draw-offer-btn" class="ctrl-btn hidden" title="Offer draw">½</button>
+            <button type="button" id="claim-draw-btn" class="ctrl-btn claim-draw-btn hidden" title="Claim draw">Draw</button>
+            <button type="button" id="resign-btn" class="ctrl-btn ctrl-btn-danger" title="Resign">⚑</button>
+            <div class="ctrl-spacer"></div>
+            <button type="button" id="to-lobby-btn" class="ctrl-btn ctrl-btn-back">← Lobby</button>
+          </div>
+
+          <!-- Status row -->
+          <div class="game-status-row">
+            <div id="result-banner" class="result-banner hidden"></div>
+            <div id="rating-banner" class="rating-banner hidden"></div>
+          </div>
+
+        </div>
+
+        <!-- ── Sidebar ── -->
+        <div class="sidebar">
+          <div class="turn-section">
+            <span id="turn-indicator" class="turn-indicator"></span>
+            <span id="check-indicator" class="check-badge hidden">CHECK</span>
+          </div>
+          <div class="move-list-wrap">
+            <div id="move-list" class="move-list"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /game-area -->
+
+    <!-- ──────── Game history ──────── -->
+    <div id="history-panel" class="history-panel"></div>
+
+    <!-- ──────── Create room dialog ──────── -->
+    <div id="create-room-dialog" class="dialog-overlay hidden">
+      <div class="dialog">
+        <div class="dialog-header">
+          <h2>New game</h2>
+          <button type="button" id="create-dialog-cancel" class="dialog-close" aria-label="Close">✕</button>
+        </div>
+        <div class="dialog-body">
+          <label class="field">
+            <span class="field-label">Opponent</span>
+            <select id="create-mode-select" class="field-select">
+              <option value="black">vs Computer (you play White)</option>
+              <option value="white">vs Computer (you play Black)</option>
+              <option value="none">vs Human</option>
+              <option value="both">Computer vs Computer</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">Your color</span>
+            <select id="create-color-select" class="field-select">
+              <option value="white">White</option>
+              <option value="black">Black</option>
+              <option value="random">Random</option>
+            </select>
+          </label>
+          <label class="field" id="create-depth-row">
+            <span class="field-label">Engine strength</span>
+            <select id="create-depth-select" class="field-select">
+              <option value="1">Level 1 — Easy</option>
+              <option value="2" selected>Level 2 — Normal</option>
+              <option value="3">Level 3 — Hard</option>
+              <option value="4">Level 4 — Master</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">Time control</span>
+            <select id="create-tc-select" class="field-select">
+              <option value="none">No clock</option>
+              <option value="bullet1">Bullet 1+0</option>
+              <option value="bullet2">Bullet 2+1</option>
+              <option value="blitz3">Blitz 3+0</option>
+              <option value="blitz5" selected>Blitz 5+3</option>
+              <option value="rapid10">Rapid 10+0</option>
+              <option value="rapid15">Rapid 15+10</option>
+            </select>
+          </label>
+        </div>
+        <div class="dialog-footer">
+          <button type="button" id="create-dialog-start" class="btn-primary">Create game</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ──────── Promotion dialog ──────── -->
+    <div id="promotion-dialog" class="dialog-overlay hidden">
+      <div class="dialog promotion-dialog">
+        <h3>Promote pawn</h3>
+        <div class="promotion-pieces" id="promotion-pieces"></div>
+      </div>
+    </div>
+
+  </div><!-- /app -->
+
+  <!-- Hidden clock elements — moved into panels by JS -->
+  <div id="clock-container" style="display:none">
+    <span id="clock-white" class="clock">0:00</span>
+    <span id="clock-black" class="clock">0:00</span>
+  </div>
+
+  <!-- Hidden opponent-banner element (kept for JS compat) -->
+  <div id="opponent-banner" style="display:none"></div>
+
+  <script src="bundle.js?v=2"></script>
+</body>
+</html>
