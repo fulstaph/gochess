@@ -10,6 +10,20 @@ import (
 	"github.com/fulstaph/gochess/store"
 )
 
+func doGet(t *testing.T, url string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
+}
+
 // fakeStore is a minimal store.Store implementation for testing health handlers.
 // Only Ping has meaningful behaviour; all other methods return zero values.
 type fakeStore struct {
@@ -46,11 +60,7 @@ func TestHealthz(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/healthz")
-	if err != nil {
-		t.Fatalf("GET /healthz: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := doGet(t, srv.URL+"/healthz") //nolint:bodyclose // closed inside doGet via t.Cleanup
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
 	}
@@ -62,11 +72,7 @@ func TestReadyz_NilDB(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/readyz")
-	if err != nil {
-		t.Fatalf("GET /readyz: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := doGet(t, srv.URL+"/readyz") //nolint:bodyclose // closed inside doGet via t.Cleanup
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200 (nil DB = in-memory, always ready)", resp.StatusCode)
 	}
@@ -79,11 +85,7 @@ func TestReadyz_HealthyDB(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/readyz")
-	if err != nil {
-		t.Fatalf("GET /readyz: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := doGet(t, srv.URL+"/readyz") //nolint:bodyclose // closed inside doGet via t.Cleanup
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200 (healthy DB)", resp.StatusCode)
 	}
@@ -96,11 +98,7 @@ func TestReadyz_FailingDB(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/readyz")
-	if err != nil {
-		t.Fatalf("GET /readyz: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := doGet(t, srv.URL+"/readyz") //nolint:bodyclose // closed inside doGet via t.Cleanup
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503 (DB unreachable)", resp.StatusCode)
 	}

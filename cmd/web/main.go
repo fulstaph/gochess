@@ -52,7 +52,9 @@ func main() {
 	mux.HandleFunc("GET /ws", hub.HandleWebSocket)
 	mux.HandleFunc("GET /api/rooms", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(hub.ListRooms())
+		if err := json.NewEncoder(w).Encode(hub.ListRooms()); err != nil {
+			log.Printf("encode rooms: %v", err)
+		}
 	})
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.HandleFunc("GET /readyz", readyzHandler(db))
@@ -121,7 +123,9 @@ func listGamesHandler(db *store.Postgres) http.HandlerFunc {
 			games = []*store.Game{}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(games)
+		if err := json.NewEncoder(w).Encode(games); err != nil {
+			log.Printf("encode games: %v", err)
+		}
 	}
 }
 
@@ -138,7 +142,9 @@ func getGameHandler(db *store.Postgres) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(g)
+		if err := json.NewEncoder(w).Encode(g); err != nil {
+			log.Printf("encode game: %v", err)
+		}
 	}
 }
 
@@ -168,7 +174,7 @@ func getPlayerHandler(db *store.Postgres) http.HandlerFunc {
 			Draws       int    `json:"draws"`
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(profileResponse{
+		if err := json.NewEncoder(w).Encode(profileResponse{
 			ID:          p.ID,
 			DisplayName: p.DisplayName,
 			Rating:      p.Rating,
@@ -176,7 +182,9 @@ func getPlayerHandler(db *store.Postgres) http.HandlerFunc {
 			Wins:        stats.Wins,
 			Losses:      stats.Losses,
 			Draws:       stats.Draws,
-		})
+		}); err != nil {
+			log.Printf("encode player: %v", err)
+		}
 	}
 }
 

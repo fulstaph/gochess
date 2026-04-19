@@ -1,3 +1,5 @@
+// Package server implements the WebSocket multiplayer hub: rooms, matchmaking,
+// rating, authentication, and per-player rate limiting.
 package server
 
 import (
@@ -8,10 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fulstaph/gochess/chess"
-	"github.com/fulstaph/gochess/store"
 	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
+
+	"github.com/fulstaph/gochess/chess"
+	"github.com/fulstaph/gochess/store"
 )
 
 // Hub manages all active rooms and connected players.
@@ -94,7 +97,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	playerID, displayName, token, err := h.sessions.resolve(r)
 	if err != nil {
 		log.Printf("session resolve: %v", err)
-		conn.Close(websocket.StatusInternalError, "internal error")
+		_ = conn.Close(websocket.StatusInternalError, "internal error")
 		return
 	}
 

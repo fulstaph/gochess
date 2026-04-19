@@ -242,7 +242,7 @@ func parseSANPawn(san string, state GameState, legal []Move) (Move, error) {
 	s = strings.ReplaceAll(s, "x", "")
 
 	// Now s is: "e4", "de5" (file + square), or just square "e4".
-	var fromFile int = -1
+	var fromFile = -1
 	var toR, toC int
 	var ok bool
 
@@ -311,8 +311,8 @@ func parseSANPiece(san string, state GameState, legal []Move) (Move, error) {
 
 	// Disambiguation: everything before the destination square.
 	disambig := s[:len(s)-2]
-	var disambigFile int = -1
-	var disambigRank int = -1
+	var disambigFile = -1
+	var disambigRank = -1
 
 	for _, ch := range disambig {
 		if ch >= 'a' && ch <= 'h' {

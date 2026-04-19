@@ -134,7 +134,7 @@ func TestApplyMove_Promotion(t *testing.T) {
 func TestShouldAIMove(t *testing.T) {
 	tests := []struct {
 		aiMode string
-		turn   int    // chess.White or chess.Black
+		turn   int // chess.White or chess.Black
 		want   bool
 	}{
 		{"black", chess.White, false},
@@ -150,7 +150,7 @@ func TestShouldAIMove(t *testing.T) {
 		s := NewSession(tc.aiMode, 1)
 		// Force the turn without going through move application.
 		if tc.turn == chess.Black {
-			s.ApplyMove("e2", "e4", "") // make white move so it's black's turn
+			_ = s.ApplyMove("e2", "e4", "") // make white move so it's black's turn
 		}
 		got := s.ShouldAIMove()
 		if got != tc.want {
@@ -182,7 +182,7 @@ func TestResign_WhiteResigns(t *testing.T) {
 
 func TestResign_BlackResigns(t *testing.T) {
 	s := NewSession("none", 1)
-	s.ApplyMove("e2", "e4", "")
+	_ = s.ApplyMove("e2", "e4", "")
 	s.Resign() // black's turn → white wins
 	if !strings.Contains(s.result, "White") {
 		t.Fatalf("expected White to win, got: %q", s.result)
@@ -245,7 +245,7 @@ func TestBuildStateMessage_LastMove(t *testing.T) {
 		t.Fatal("lastMove must be nil at start")
 	}
 
-	s.ApplyMove("e2", "e4", "")
+	_ = s.ApplyMove("e2", "e4", "")
 	msg = s.BuildStateMessage()
 	if msg.LastMove == nil {
 		t.Fatal("lastMove must be set after a move")
@@ -276,7 +276,7 @@ func TestBuildStateMessage_CheckDetection(t *testing.T) {
 	// Fool's mate puts white in check on the last move.
 	applyMoves(t, s, "f2f3", "e7e5", "g2g4")
 	// Black queen to h4 — check+mate.
-	s.ApplyMove("d8", "h4", "")
+	_ = s.ApplyMove("d8", "h4", "")
 	msg := s.BuildStateMessage()
 	if !msg.IsCheck {
 		t.Fatal("expected IsCheck=true after queen check")

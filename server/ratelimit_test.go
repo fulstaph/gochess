@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -139,7 +140,7 @@ func TestClientIP(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 			req.RemoteAddr = tc.remoteAddr
 			if tc.xff != "" {
 				req.Header.Set("X-Forwarded-For", tc.xff)

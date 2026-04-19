@@ -220,4 +220,3 @@ func formatMoveToLegal(mv chess.Move, currentState chess.GameState) *LegalMove {
 	}
 	return &lm
 }
-

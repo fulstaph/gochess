@@ -86,9 +86,10 @@ func TestOrderMoves_HistorySortsQuiet(t *testing.T) {
 	found := 0
 	for _, mv := range moves {
 		if !isCapture(state, mv) {
-			if found == 0 {
+			switch found {
+			case 0:
 				quiet1 = mv
-			} else if found == 1 {
+			case 1:
 				quiet2 = mv
 			}
 			found++
