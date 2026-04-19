@@ -3,23 +3,34 @@ version: "2"
 linters:
   enable:
     - errcheck      # unchecked errors
-    - gosimple      # simplification suggestions
     - govet         # go vet checks
     - ineffassign   # unused assignments
     - staticcheck   # static analysis (includes SA, S, ST families)
     - unused        # unused code
-    - gofmt         # formatting
-    - goimports     # import ordering
     - misspell      # common spelling mistakes
     - bodyclose     # HTTP response body not closed
     - noctx         # HTTP requests without context
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - -SA1019  # nhooyr.io/websocket is deprecated; migrating is out of scope
 
-linters-settings:
-  goimports:
-    local-prefixes: github.com/fulstaph/gochess
+formatters:
+  enable:
+    - gofmt         # formatting
+    - goimports     # import ordering
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/fulstaph/gochess
 
 issues:
   exclude-rules:
     # Test files don't need context on every call.
     - path: _test\.go
       linters: [noctx]
+    # nhooyr.io/websocket is deprecated in favour of coder/websocket; migrating
+    # is out of scope for this PR.
+    - text: "coder now maintains this library"
+      linters: [staticcheck]

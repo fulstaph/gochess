@@ -1,3 +1,5 @@
+// Package chess implements the core chess engine: move generation, rules,
+// evaluation, and AI search (minimax with alpha-beta pruning).
 package chess
 
 import "sort"

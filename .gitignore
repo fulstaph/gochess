@@ -11,3 +11,4 @@ tmp/
 web/dist/bundle.js
 web/dist/bundle.js.map
 web/node_modules/
+.worktrees/

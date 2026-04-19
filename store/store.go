@@ -57,6 +57,9 @@ type Store interface {
 	DeleteSession(ctx context.Context, token string) error
 	DeleteExpiredSessions(ctx context.Context) error
 
+	// Health
+	Ping(ctx context.Context) error
+
 	// Lifecycle
 	Close()
 }

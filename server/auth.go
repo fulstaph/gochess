@@ -11,8 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fulstaph/gochess/store"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/fulstaph/gochess/store"
 )
 
 // sessionManager handles player identity and session persistence.

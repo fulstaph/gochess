@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/fulstaph/gochess/chess"
 	gm "github.com/fulstaph/gochess/game"
 )

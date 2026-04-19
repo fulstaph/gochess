@@ -5,25 +5,25 @@ const ProtocolVersion = "1"
 // ---- Client → Server messages ----
 
 type ClientMessage struct {
-	Type        string `json:"type"`
-	V           string `json:"v,omitempty"`
+	Type string `json:"type"`
+	V    string `json:"v,omitempty"`
 	// move
-	From        string `json:"from,omitempty"`
-	To          string `json:"to,omitempty"`
-	Promotion   string `json:"promotion,omitempty"`
+	From      string `json:"from,omitempty"`
+	To        string `json:"to,omitempty"`
+	Promotion string `json:"promotion,omitempty"`
 	// new_game (single-session legacy) / create_room
-	AIMode      string `json:"aiMode,omitempty"`
-	AIDepth     int    `json:"aiDepth,omitempty"`
+	AIMode  string `json:"aiMode,omitempty"`
+	AIDepth int    `json:"aiDepth,omitempty"`
 	// create_room
 	Color       string `json:"color,omitempty"`       // "white", "black", "random"
 	TimeControl string `json:"timeControl,omitempty"` // preset name or "none"
 	// join_room / spectate
-	RoomID      string `json:"roomId,omitempty"`
+	RoomID string `json:"roomId,omitempty"`
 	// draw_response
-	Accept      bool   `json:"accept,omitempty"`
+	Accept bool `json:"accept,omitempty"`
 	// register / login
-	Username    string `json:"username,omitempty"`
-	Password    string `json:"password,omitempty"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
 	// find_game (matchmaking)
 	// TimeControl reused
 }
@@ -44,14 +44,14 @@ type StateMessage struct {
 	LastMove    *LegalMove   `json:"lastMove"`
 	MoveHistory []string     `json:"moveHistory"`
 	// Multiplayer fields (zero-value omitted for backwards compat)
-	PlayerColor  string `json:"playerColor,omitempty"`  // "white" | "black" | "spectator"
-	RoomID       string `json:"roomId,omitempty"`
+	PlayerColor string `json:"playerColor,omitempty"` // "white" | "black" | "spectator"
+	RoomID      string `json:"roomId,omitempty"`
 	// Clock fields (zero when no time control)
-	WhiteMs      int64  `json:"whiteMs,omitempty"`
-	BlackMs      int64  `json:"blackMs,omitempty"`
-	HasClock     bool   `json:"hasClock,omitempty"`
+	WhiteMs  int64 `json:"whiteMs,omitempty"`
+	BlackMs  int64 `json:"blackMs,omitempty"`
+	HasClock bool  `json:"hasClock,omitempty"`
 	// Draw state
-	DrawOffered  bool   `json:"drawOffered,omitempty"` // true when opponent has offered a draw
+	DrawOffered   bool   `json:"drawOffered,omitempty"`   // true when opponent has offered a draw
 	ClaimableDraw string `json:"claimableDraw,omitempty"` // non-empty notice when draw can be claimed
 }
 
@@ -107,14 +107,14 @@ type RoomListMessage struct {
 }
 
 type RoomInfo struct {
-	RoomID       string `json:"roomId"`
-	Status       string `json:"status"` // "waiting" | "playing" | "finished"
-	WhiteName    string `json:"whiteName"`
-	BlackName    string `json:"blackName"`
-	WhiteRating  int    `json:"whiteRating,omitempty"`
-	BlackRating  int    `json:"blackRating,omitempty"`
-	TimeControl  string `json:"timeControl,omitempty"`
-	Spectators   int    `json:"spectators,omitempty"`
+	RoomID      string `json:"roomId"`
+	Status      string `json:"status"` // "waiting" | "playing" | "finished"
+	WhiteName   string `json:"whiteName"`
+	BlackName   string `json:"blackName"`
+	WhiteRating int    `json:"whiteRating,omitempty"`
+	BlackRating int    `json:"blackRating,omitempty"`
+	TimeControl string `json:"timeControl,omitempty"`
+	Spectators  int    `json:"spectators,omitempty"`
 }
 
 // OpponentDisconnectedMessage notifies the remaining player.

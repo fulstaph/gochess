@@ -5,8 +5,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fulstaph/gochess/chess"
 	"github.com/mattn/go-runewidth"
+
+	"github.com/fulstaph/gochess/chess"
 )
 
 var (
@@ -66,7 +67,7 @@ func buildHeader(state chess.GameState, status string, perspective int, thinking
 	view := chess.ColorName(perspective)
 	meta := metaStyle.Render(fmt.Sprintf("Move %d | %s to move | Halfmove %d | View: %s", state.FullmoveNumber(), chess.ColorName(state.Turn()), state.HalfmoveClock(), view))
 	lines := []string{title, meta}
-	
+
 	statusLine := ""
 	if thinking {
 		statusLine = thinkingStyle.Render("Thinking...")
@@ -80,11 +81,11 @@ func buildHeader(state chess.GameState, status string, perspective int, thinking
 		}
 		statusLine = style.Render(status)
 	}
-	
+
 	if statusLine != "" {
 		lines = append(lines, statusLine)
 	}
-	
+
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 

@@ -39,10 +39,10 @@ type Room struct {
 	mu  sync.Mutex
 	hub *Hub
 
-	status RoomStatus
-	white  *Player
-	black  *Player
-	vsAI   bool
+	status  RoomStatus
+	white   *Player
+	black   *Player
+	vsAI    bool
 	aiDepth int
 
 	spectators []*Player
@@ -53,15 +53,15 @@ type Room struct {
 	moves       []chess.Move // ordered list for PGN generation
 	gameOver    bool
 	result      string
-	lastMove   *chess.Move
-	legalMoves []chess.Move // legal moves for current position (nil = not yet computed)
+	lastMove    *chess.Move
+	legalMoves  []chess.Move // legal moves for current position (nil = not yet computed)
 
 	startedAt time.Time
 
 	// Time control
 	clock  *Clock // nil for untimed games
-	tcName      string  // preset name, "" for untimed
-	rated       bool
+	tcName string // preset name, "" for untimed
+	rated  bool
 
 	// Draw offer: which role has an outstanding offer (nil = none)
 	drawOffer *PlayerRole
@@ -216,33 +216,6 @@ func (r *Room) removePlayer(p *Player) {
 		}
 		r.blackTimer = timer
 	}
-}
-
-// reconnectPlayer re-seats a player who had previously disconnected.
-func (r *Room) reconnectPlayer(p *Player, role PlayerRole) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if role == RoleWhite {
-		if r.whiteTimer != nil {
-			r.whiteTimer.Stop()
-			r.whiteTimer = nil
-		}
-		r.white = p
-	} else {
-		if r.blackTimer != nil {
-			r.blackTimer.Stop()
-			r.blackTimer = nil
-		}
-		r.black = p
-	}
-
-	p.mu.Lock()
-	p.roomID = r.id
-	p.mu.Unlock()
-
-	r.broadcastExcept(p, OpponentReconnectedMessage{Type: "opponent_reconnected", V: ProtocolVersion})
-	p.sendJSON(r.buildStateFor(role))
 }
 
 // ApplyMove validates and applies a player move.

@@ -13,7 +13,7 @@ import (
 type PlayerRole int
 
 const (
-	RoleWhite     PlayerRole = iota
+	RoleWhite PlayerRole = iota
 	RoleBlack
 	RoleSpectator
 )
@@ -33,6 +33,7 @@ func (r PlayerRole) String() string {
 type Player struct {
 	ID          string
 	DisplayName string
+	remoteIP    string // set by Hub at accept time; used for per-IP rate limiting
 	conn        *websocket.Conn
 	send        chan []byte
 	hub         *Hub
@@ -77,6 +78,12 @@ func (p *Player) readPump(ctx context.Context) {
 		_, data, err := p.conn.Read(ctx)
 		if err != nil {
 			return
+		}
+		// Per-player message rate limit — checked before JSON parsing so a
+		// spamming client cannot burn CPU on unmarshalling.
+		if !p.hub.msgLim.Allow(p.ID) {
+			sendRateLimited(p, "message")
+			continue
 		}
 		var msg ClientMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
