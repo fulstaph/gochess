@@ -130,8 +130,8 @@ When `DATABASE_URL` is unset, the server uses a thread-safe in-memory implementa
 
 **Room lifecycle**: `RoomWaiting` → `RoomPlaying` → `RoomFinished`
 
-**Key client→server message types**: `move`, `new_game`, `resign`, `draw_offer`, `draw_accept`,
-`draw_decline`, `undo_request`, `undo_accept`, `create_room`, `join_room`, `find_game`, `leave_room`
+**Key client→server message types**: `move`, `new_game`, `resign`, `draw_offer`, `draw_response`,
+`undo`, `cancel_match`, `create_room`, `join_room`, `list_rooms`, `find_game`, `register`, `login`
 
 **Key server→client message types**: `state` (full game state after every action), `session`,
 `room_created`, `match_found`, `rating_update`, `error`, `room_list`
@@ -149,18 +149,19 @@ All messages carry a `v` (version) field for protocol versioning.
 **HTTP endpoints**:
 - `GET /healthz` — liveness probe (always 200)
 - `GET /readyz` — readiness probe (200 when DB pingable, 503 otherwise)
-- `GET /api/rooms` — list active rooms (JSON)
-- `GET /api/games` — list finished games
-- `GET /api/players` — list players
+- `GET /api/rooms` — list active rooms (JSON; always available)
+- `GET /api/games?player=<id>` — list games by player (PostgreSQL only; `player` param required, 400 otherwise; optional `limit`/`offset`)
+- `GET /api/games/{id}` — get a single game by ID (PostgreSQL only)
+- `GET /api/players/{id}` — get player profile + win/loss/draw stats (PostgreSQL only)
 
 ## Configuration
 
 Layered config (later layers override earlier):
 1. Compiled-in defaults (port 8080, no DB)
-2. `config.json` file (if present)
-3. `DATABASE_URL` environment variable (legacy, sets DB URL)
+2. `DATABASE_URL` environment variable (legacy bridge; loaded early so `config.json` can override it)
+3. `config.json` file (if present; overrides `DATABASE_URL`)
 4. `GOCHESS__*` environment variables (e.g. `GOCHESS__HTTP__PORT=9090`, `GOCHESS__DB__URL=postgres://...`)
-5. CLI flags (`--port`, `--db.url`)
+5. CLI flags (`--port`, `--db.url`; highest precedence)
 
 Config is implemented in `cmd/web/config.go` using `knadh/koanf/v2`.
 
