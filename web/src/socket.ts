@@ -3,7 +3,7 @@ import { ClientMessage, ServerMessage } from "./types";
 const TOKEN_KEY = "gochess_token";
 
 export type MessageHandler = (msg: ServerMessage) => void;
-export type ConnectionStatus = "connected" | "reconnecting" | "disconnected";
+export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
 export type StatusHandler = (status: ConnectionStatus) => void;
 
 export class ChessSocket {
@@ -17,6 +17,7 @@ export class ChessSocket {
   constructor(onMessage: MessageHandler, onStatus?: StatusHandler) {
     this.onMessage = onMessage;
     this.onStatus = onStatus ?? null;
+    this.onStatus?.("connecting");
     this.connect();
   }
 
@@ -56,10 +57,12 @@ export class ChessSocket {
     };
   }
 
-  send(msg: ClientMessage): void {
+  send(msg: ClientMessage): boolean {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+      return true;
     }
+    return false;
   }
 
   close(): void {

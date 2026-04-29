@@ -239,7 +239,13 @@ func (m *model) handleInput(input string) tea.Cmd {
 
 	move, err := chess.ParseMove(input, m.state)
 	if err != nil {
-		m.errMsg = err.Error() + " (e.g. e2e4, O-O, e7e8q)"
+		msg := err.Error()
+		// Append format examples only for parse failures (bad square, short input),
+		// not for legal-move failures where the user's format was already correct.
+		if strings.HasPrefix(msg, "invalid") {
+			msg += " — e.g. e2e4, O-O, e7e8q"
+		}
+		m.errMsg = msg
 		return nil
 	}
 	return m.applyMove(move, moveSourceHuman)
