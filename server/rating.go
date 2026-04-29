@@ -62,6 +62,21 @@ func (r *Rater) UpdateGame(winnerID, loserID string, isDraw bool) {
 	r.lastUpdated[loserID] = now
 }
 
+// Seed sets the initial rating for playerID from a persisted value.
+// It is a no-op if the player already has an in-memory entry, so mid-session
+// updates are never overwritten by a stale reconnect.
+func (r *Rater) Seed(playerID string, rating int) {
+	if playerID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.ratings[playerID]; !ok {
+		r.ratings[playerID] = rating
+		r.lastUpdated[playerID] = time.Now()
+	}
+}
+
 func (r *Rater) ratingLocked(id string) int {
 	if v, ok := r.ratings[id]; ok {
 		return v
