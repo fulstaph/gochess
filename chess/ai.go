@@ -23,11 +23,29 @@ const (
 	phaseTotal  = 4*phaseKnight + 4*phaseBishop + 4*phaseRook + 2*phaseQueen // 24
 )
 
+// ttNodeType classifies how a stored transposition table score should be interpreted.
+type ttNodeType int8
+
+const (
+	ttExact      ttNodeType = iota // score is exact
+	ttLowerBound                   // score is a lower bound (fail-high / beta cutoff)
+	ttUpperBound                   // score is an upper bound (fail-low / alpha unchanged)
+)
+
+// ttEntry is a single transposition table record.
+type ttEntry struct {
+	depth    int
+	score    int
+	nodeType ttNodeType
+	bestMove Move
+}
+
 // searchContext holds per-search mutable state for move ordering heuristics.
 type searchContext struct {
-	killers  [64][2]Move // 2 killer moves per ply
-	history  [64][64]int // history[fromSq][toSq] counters
-	maxDepth int         // root search depth (used to compute ply)
+	killers  [64][2]Move        // 2 killer moves per ply
+	history  [64][64]int        // history[fromSq][toSq] counters
+	maxDepth int                // root search depth (used to compute ply)
+	tt       map[string]ttEntry // transposition table; persists across iterative deepening passes
 }
 
 func sqIndex(r, c int) int { return r*8 + c }
@@ -45,7 +63,9 @@ func BestMove(state GameState, depth int) (Move, bool) {
 	}
 
 	bestMove := moves[0]
-	sc := &searchContext{}
+	sc := &searchContext{
+		tt: make(map[string]ttEntry),
+	}
 
 	// Iterative deepening: search d=1,2,...,depth, using previous best for ordering.
 	for d := 1; d <= depth; d++ {
@@ -82,14 +102,42 @@ func negamax(state GameState, depth, alpha, beta int, sc *searchContext) int {
 		return quiescence(state, alpha, beta, maxQSDepth)
 	}
 
+	// TT probe: use cached result if available at sufficient depth.
+	key := PositionKey(state)
+	origAlpha := alpha
+	var ttMove Move
+
+	if entry, ok := sc.tt[key]; ok {
+		if entry.depth >= depth {
+			switch entry.nodeType {
+			case ttExact:
+				return entry.score
+			case ttLowerBound:
+				if entry.score > alpha {
+					alpha = entry.score
+				}
+			case ttUpperBound:
+				if entry.score < beta {
+					beta = entry.score
+				}
+			}
+			if alpha >= beta {
+				return entry.score
+			}
+		}
+		ttMove = entry.bestMove // use for move ordering even when depth is insufficient
+	}
+
 	ply := sc.maxDepth - depth
-	ordered := orderMoves(state, moves, Move{}, sc, depth)
+	ordered := orderMoves(state, moves, ttMove, sc, depth)
 	best := -inf
+	var bestMv Move
 	for _, mv := range ordered {
 		next := ApplyMove(state, mv)
 		score := -negamax(next, depth-1, -beta, -alpha, sc)
 		if score > best {
 			best = score
+			bestMv = mv
 		}
 		if score > alpha {
 			alpha = score
@@ -106,6 +154,19 @@ func negamax(state GameState, depth, alpha, beta int, sc *searchContext) int {
 			break
 		}
 	}
+
+	// TT store: classify and cache this node's result.
+	var nt ttNodeType
+	switch {
+	case best <= origAlpha:
+		nt = ttUpperBound
+	case best >= beta:
+		nt = ttLowerBound
+	default:
+		nt = ttExact
+	}
+	sc.tt[key] = ttEntry{depth: depth, score: best, nodeType: nt, bestMove: bestMv}
+
 	return best
 }
 
