@@ -24,6 +24,7 @@
         <span class="logo-text">gochess</span>
       </a>
       <div class="header-right">
+        <span id="conn-status" class="conn-status" data-status="connecting" title="Connecting…"></span>
         <span id="lobby-display-name" class="header-username"></span>
       </div>
     </header>
@@ -259,6 +260,8 @@
 
   <!-- Hidden opponent-banner element (kept for JS compat) -->
   <div id="opponent-banner" style="display:none"></div>
+
+  <div id="toast-container" class="toast-container"></div>
 
   <script src="bundle.js?v=2"></script>
 </body>

@@ -7,8 +7,35 @@ import { Settings, applyTheme } from "./settings";
 import { ChessSocket } from "./socket";
 import { GameState, ServerMessage } from "./types";
 
+// ---- Constants ----
+
+const DRAW_COOLDOWN_MS = 5_000;
+const HISTORY_RELOAD_DELAY_MS = 1_500;
+// Matches disconnectGrace in server/room.go — update both together.
+const OPPONENT_DISCONNECT_GRACE_S = 60;
+
+// ---- Toast notifications ----
+
+const toastContainer = document.getElementById("toast-container")!;
+
+function showToast(message: string, variant: "error" | "info" = "info"): void {
+  const FADE_MS = 300;
+  const el = document.createElement("div");
+  el.className = `toast toast-${variant}`;
+  el.textContent = message;
+  toastContainer.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("toast-visible"));
+  // Remove after display + fade; timeout-based so it works even when
+  // CSS transitions are disabled (e.g. prefers-reduced-motion).
+  setTimeout(() => {
+    el.classList.remove("toast-visible");
+    setTimeout(() => el.remove(), FADE_MS);
+  }, 4000);
+}
+
 // ---- DOM elements ----
 
+const connStatusEl = document.getElementById("conn-status")!;
 const lobbyEl = document.getElementById("lobby")!;
 const gameAreaEl = document.getElementById("game-area")!;
 const boardEl = document.getElementById("board")!;
@@ -18,14 +45,14 @@ const checkIndicator = document.getElementById("check-indicator")!;
 const resultBanner = document.getElementById("result-banner")!;
 const moveList = document.getElementById("move-list")!;
 const flipBtn = document.getElementById("flip-btn")!;
-const resignBtn = document.getElementById("resign-btn")!;
+const resignBtn = document.getElementById("resign-btn") as HTMLButtonElement;
 const toLobbyBtn = document.getElementById("to-lobby-btn")!;
 const opponentBanner = document.getElementById("opponent-banner")!;
 const drawOfferBanner = document.getElementById("draw-offer-banner")!;
 const drawAcceptBtn = document.getElementById("draw-accept-btn")!;
 const drawDeclineBtn = document.getElementById("draw-decline-btn")!;
 const undoBtn = document.getElementById("undo-btn")!;
-const drawOfferBtn = document.getElementById("draw-offer-btn")!;
+const drawOfferBtn = document.getElementById("draw-offer-btn") as HTMLButtonElement;
 const claimDrawBtn = document.getElementById("claim-draw-btn")!;
 const ratingBanner = document.getElementById("rating-banner")!;
 const whiteClockEl = document.getElementById("clock-white")!;
@@ -49,6 +76,12 @@ let gameState: GameState | null = null;
 let myPlayerID = "";
 let myDisplayName = "";
 let isVsAI = false;
+// Timer IDs tracked so they can be cancelled when leaving a game.
+let disconnectCountdownId: ReturnType<typeof setInterval> | null = null;
+let drawCooldownId: ReturnType<typeof setInterval> | null = null;
+// Two-click resign state.
+let resignConfirming = false;
+let resignConfirmId: ReturnType<typeof setTimeout> | null = null;
 
 // ---- Settings ----
 
@@ -100,7 +133,14 @@ const lobby = new Lobby(lobbyEl, {
 
 // ---- Socket ----
 
-const socket = new ChessSocket(handleMessage);
+const socket = new ChessSocket(handleMessage, (status) => {
+  connStatusEl.dataset.status = status;
+  connStatusEl.title =
+    status === "connected"    ? "Connected" :
+    status === "reconnecting" ? "Reconnecting…" :
+    status === "connecting"   ? "Connecting…" :
+                                "Disconnected";
+});
 
 function handleMessage(msg: ServerMessage): void {
   switch (msg.type) {
@@ -210,16 +250,21 @@ function handleMessage(msg: ServerMessage): void {
     }
 
     case "opponent_disconnected":
-      opponentBanner.textContent = "Opponent disconnected — waiting 60s...";
+      opponentBanner.textContent = `Opponent disconnected — waiting ${OPPONENT_DISCONNECT_GRACE_S}s…`;
       opponentBanner.classList.remove("hidden");
+      startDisconnectCountdown();
       break;
 
     case "opponent_reconnected":
-      opponentBanner.textContent = gameState?.playerColor ? `Opponent reconnected` : "";
+      if (disconnectCountdownId !== null) {
+        clearInterval(disconnectCountdownId);
+        disconnectCountdownId = null;
+      }
+      opponentBanner.textContent = gameState?.playerColor ? "Opponent reconnected" : "";
       break;
 
     case "error":
-      console.error("Server error:", msg.message);
+      showToast(msg.message, "error");
       break;
   }
 }
@@ -301,8 +346,9 @@ function updateSidebar(): void {
     drawOfferBanner.classList.add("hidden");
     whiteClock.stop();
     blackClock.stop();
+    cancelResignConfirm();
     if (myPlayerID) {
-      setTimeout(() => historyPanel.load(myPlayerID), 1500);
+      setTimeout(() => historyPanel.load(myPlayerID), HISTORY_RELOAD_DELAY_MS);
     }
   } else {
     resultBanner.classList.add("hidden");
@@ -362,6 +408,18 @@ function showLobby(): void {
   playerNameTopEl.textContent = "";
   whiteClock.stop();
   blackClock.stop();
+  if (disconnectCountdownId !== null) {
+    clearInterval(disconnectCountdownId);
+    disconnectCountdownId = null;
+  }
+  if (drawCooldownId !== null) {
+    clearInterval(drawCooldownId);
+    drawCooldownId = null;
+    drawOfferBtn.disabled = false;
+    drawOfferBtn.title = "Offer draw";
+    drawOfferBtn.setAttribute("aria-label", "Offer draw");
+  }
+  cancelResignConfirm();
   lobbyEl.classList.remove("hidden");
   socket.send({ type: "list_rooms" });
 }
@@ -370,10 +428,28 @@ function showLobby(): void {
 
 flipBtn.addEventListener("click", () => board.flip());
 
-resignBtn.addEventListener("click", () => {
-  if (gameState && !gameState.isGameOver) {
-    socket.send({ type: "resign" });
+// Two-click resign: first click arms the button for 3 s, second click confirms.
+function cancelResignConfirm(): void {
+  if (resignConfirmId !== null) {
+    clearTimeout(resignConfirmId);
+    resignConfirmId = null;
   }
+  resignConfirming = false;
+  resignBtn.textContent = "⚑";
+  resignBtn.title = "Resign";
+}
+
+resignBtn.addEventListener("click", () => {
+  if (!gameState || gameState.isGameOver) return;
+  if (!resignConfirming) {
+    resignConfirming = true;
+    resignBtn.textContent = "Sure?";
+    resignBtn.title = "Click again to confirm resignation";
+    resignConfirmId = setTimeout(cancelResignConfirm, 3000);
+    return;
+  }
+  cancelResignConfirm();
+  socket.send({ type: "resign" });
 });
 
 undoBtn.addEventListener("click", () => {
@@ -385,10 +461,50 @@ undoBtn.addEventListener("click", () => {
 toLobbyBtn.addEventListener("click", () => showLobby());
 
 drawOfferBtn.addEventListener("click", () => {
-  socket.send({ type: "draw_offer" });
-  (drawOfferBtn as HTMLButtonElement).disabled = true;
-  setTimeout(() => { (drawOfferBtn as HTMLButtonElement).disabled = false; }, 5000);
+  if (!socket.send({ type: "draw_offer" })) {
+    showToast("Not connected — draw offer was not sent.", "error");
+    return;
+  }
+  showToast("Draw offered — waiting for opponent's response.", "info");
+  startDrawCooldown();
 });
+
+function startDrawCooldown(): void {
+  if (drawCooldownId !== null) clearInterval(drawCooldownId);
+  drawOfferBtn.disabled = true;
+  let remaining = DRAW_COOLDOWN_MS / 1000;
+  const setLabel = (s: string) => {
+    drawOfferBtn.title = s;
+    drawOfferBtn.setAttribute("aria-label", s);
+  };
+  setLabel(`Offer draw (${remaining}s)`);
+  drawCooldownId = setInterval(() => {
+    remaining--;
+    if (remaining <= 0) {
+      clearInterval(drawCooldownId!);
+      drawCooldownId = null;
+      drawOfferBtn.disabled = false;
+      setLabel("Offer draw");
+    } else {
+      setLabel(`Offer draw (${remaining}s)`);
+    }
+  }, 1000);
+}
+
+function startDisconnectCountdown(): void {
+  if (disconnectCountdownId !== null) clearInterval(disconnectCountdownId);
+  let secs = OPPONENT_DISCONNECT_GRACE_S;
+  const update = (): void => {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(disconnectCountdownId!);
+      disconnectCountdownId = null;
+    } else {
+      opponentBanner.textContent = `Opponent disconnected — waiting ${secs}s…`;
+    }
+  };
+  disconnectCountdownId = setInterval(update, 1000);
+}
 
 drawAcceptBtn.addEventListener("click", () => {
   socket.send({ type: "draw_response", accept: true });
