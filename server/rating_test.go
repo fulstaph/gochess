@@ -68,6 +68,46 @@ func TestRater_EmptyID_NoOp(t *testing.T) {
 	}
 }
 
+func TestRater_Seed_SetsInitialRating(t *testing.T) {
+	r := newRater()
+	r.Seed("player1", 1500)
+	if got := r.Rating("player1"); got != 1500 {
+		t.Fatalf("expected seeded rating 1500, got %d", got)
+	}
+}
+
+func TestRater_Seed_NoOverwrite(t *testing.T) {
+	r := newRater()
+	// Simulate a game updating the in-memory rating.
+	r.UpdateGame("player1", "player2", false) // player1 wins, goes above 1200
+
+	before := r.Rating("player1")
+	if before <= 1200 {
+		t.Fatalf("expected rating > 1200 after win, got %d", before)
+	}
+
+	// Seed should not overwrite the mid-session in-memory value.
+	r.Seed("player1", 1200)
+	if got := r.Rating("player1"); got != before {
+		t.Fatalf("Seed overwrote in-memory rating: expected %d, got %d", before, got)
+	}
+}
+
+func TestRater_Seed_EloUsesStoredRating(t *testing.T) {
+	r := newRater()
+	// Simulate server restart: seed from DB instead of starting at 1200.
+	r.Seed("strong", 1600)
+	r.Seed("weak", 800)
+
+	r.UpdateGame("strong", "weak", false) // strong wins
+
+	// With a 1600 vs 800 mismatch, the rating change should be tiny for strong.
+	delta := r.Rating("strong") - 1600
+	if delta > 5 {
+		t.Fatalf("expected tiny gain for heavy favourite, got +%d", delta)
+	}
+}
+
 func TestRater_ConcurrentAccess(t *testing.T) {
 	r := newRater()
 	const goroutines = 50

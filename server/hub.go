@@ -101,6 +101,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Seed the in-memory rater from the DB so Elo calculations use the correct
+	// baseline after a server restart. Seed is a no-op if the entry already exists.
+	h.rater.Seed(playerID, h.sessions.RatingFor(r.Context(), playerID))
+
 	h.mu.Lock()
 	if old, ok := h.players[playerID]; ok {
 		old.close()
@@ -408,6 +412,10 @@ func (h *Hub) handleLogin(p *Player, msg ClientMessage) {
 	}
 	h.players[playerID] = p
 	h.mu.Unlock()
+
+	// Seed the in-memory rater with the stored rating so Elo calculations
+	// use the correct baseline after a server restart.
+	h.rater.Seed(playerID, h.sessions.RatingFor(ctx, playerID))
 
 	p.sendJSON(AuthOKMessage{
 		Type:        "auth_ok",

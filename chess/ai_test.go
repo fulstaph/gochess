@@ -199,3 +199,34 @@ func TestBestMove_CapturesHangingPiece(t *testing.T) {
 			mv.fromR, mv.fromC, mv.toR, mv.toC)
 	}
 }
+
+// BenchmarkBestMove_Depth3 measures AI search from the initial position at depth 3.
+func BenchmarkBestMove_Depth3(b *testing.B) {
+	state := InitialState()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		BestMove(state, 3)
+	}
+}
+
+// BenchmarkBestMove_Depth4 measures AI search from the initial position at depth 4.
+func BenchmarkBestMove_Depth4(b *testing.B) {
+	state := InitialState()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		BestMove(state, 4)
+	}
+}
+
+// BenchmarkBestMove_Depth4_Midgame measures AI search from a complex mid-game position
+// (Ruy Lopez, after 1.e4 e5 2.Nf3 Nc6 3.Bb5) where transposition hits are frequent.
+func BenchmarkBestMove_Depth4_Midgame(b *testing.B) {
+	state, err := ParseFEN("r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3")
+	if err != nil {
+		b.Fatalf("ParseFEN: %v", err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		BestMove(state, 4)
+	}
+}
