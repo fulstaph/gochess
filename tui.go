@@ -239,7 +239,7 @@ func (m *model) handleInput(input string) tea.Cmd {
 
 	move, err := chess.ParseMove(input, m.state)
 	if err != nil {
-		m.errMsg = err.Error()
+		m.errMsg = err.Error() + " (e.g. e2e4, O-O, e7e8q)"
 		return nil
 	}
 	return m.applyMove(move, moveSourceHuman)

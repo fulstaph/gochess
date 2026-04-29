@@ -3,16 +3,20 @@ import { ClientMessage, ServerMessage } from "./types";
 const TOKEN_KEY = "gochess_token";
 
 export type MessageHandler = (msg: ServerMessage) => void;
+export type ConnectionStatus = "connected" | "reconnecting" | "disconnected";
+export type StatusHandler = (status: ConnectionStatus) => void;
 
 export class ChessSocket {
   private ws: WebSocket | null = null;
   private onMessage: MessageHandler;
+  private onStatus: StatusHandler | null;
   private reconnectDelay = 500;
   private maxReconnectDelay = 8000;
   private closed = false;
 
-  constructor(onMessage: MessageHandler) {
+  constructor(onMessage: MessageHandler, onStatus?: StatusHandler) {
     this.onMessage = onMessage;
+    this.onStatus = onStatus ?? null;
     this.connect();
   }
 
@@ -26,6 +30,7 @@ export class ChessSocket {
 
     this.ws.onopen = () => {
       this.reconnectDelay = 500;
+      this.onStatus?.("connected");
     };
 
     this.ws.onmessage = (event) => {
@@ -37,7 +42,11 @@ export class ChessSocket {
     };
 
     this.ws.onclose = () => {
-      if (this.closed) return;
+      if (this.closed) {
+        this.onStatus?.("disconnected");
+        return;
+      }
+      this.onStatus?.("reconnecting");
       setTimeout(() => this.connect(), this.reconnectDelay);
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
     };
