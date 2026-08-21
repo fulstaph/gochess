@@ -129,28 +129,26 @@ func negamax(state GameState, depth, alpha, beta int, sc *searchContext) int {
 	alphaOrig := alpha
 
 	// Transposition table probe.
-	if entry, ok := sc.tt.probe(hash); ok && entry.depth >= depth {
-		switch entry.flag {
-		case ttExact:
-			return entry.score
-		case ttAlpha:
-			if entry.score < beta {
-				beta = entry.score
-			}
-		case ttBeta:
-			if entry.score > alpha {
-				alpha = entry.score
-			}
-		}
-		if alpha >= beta {
-			return entry.score
-		}
-	}
-
-	// Use TT best move as PV move for ordering.
 	pvMove := Move{}
 	if entry, ok := sc.tt.probe(hash); ok {
 		pvMove = entry.best
+		if entry.depth >= depth {
+			switch entry.flag {
+			case ttExact:
+				return entry.score
+			case ttAlpha:
+				if entry.score < beta {
+					beta = entry.score
+				}
+			case ttBeta:
+				if entry.score > alpha {
+					alpha = entry.score
+				}
+			}
+			if alpha >= beta {
+				return entry.score
+			}
+		}
 	}
 
 	ply := sc.maxDepth - depth
@@ -403,7 +401,7 @@ func evaluate(state GameState) int {
 	score := (mgTotal*phase + egTotal*(phaseTotal-phase)) / phaseTotal
 
 	// Pawn structure evaluation.
-	score += evaluatePawnStructure(board) * state.turn
+	score += evaluatePawnStructure(board)
 
 	return score * state.turn
 }

@@ -69,9 +69,10 @@ func main() {
 	fileServer := http.FileServer(http.Dir("web/dist"))
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Cache JS/CSS for 1 day, HTML for 5 minutes.
-		if ext := r.URL.Path; len(ext) > 3 {
+		path := r.URL.Path
+		if len(path) > 3 {
 			switch {
-			case ext[len(ext)-3:] == ".js" || ext[len(ext)-4:] == ".css":
+			case path[len(path)-3:] == ".js" || path[len(path)-4:] == ".css":
 				w.Header().Set("Cache-Control", "public, max-age=86400")
 			default:
 				w.Header().Set("Cache-Control", "public, max-age=300")
