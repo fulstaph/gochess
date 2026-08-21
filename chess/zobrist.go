@@ -5,10 +5,10 @@ import "math/rand/v2"
 // Zobrist hashing for fast position identification and transposition table lookups.
 
 var (
-	zobristPiece      [12][64]uint64 // piece index × square
+	zobristPiece       [12][64]uint64 // piece index × square
 	zobristBlackToMove uint64
-	zobristCastling   [4]uint64
-	zobristEnPassant  [8]uint64 // file only (0-7)
+	zobristCastling    [4]uint64
+	zobristEnPassant   [8]uint64 // file only (0-7)
 )
 
 func init() {
