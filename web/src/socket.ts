@@ -35,7 +35,13 @@ export class ChessSocket {
     };
 
     this.ws.onmessage = (event) => {
-      const msg: ServerMessage = JSON.parse(event.data);
+      let msg: ServerMessage;
+      try {
+        msg = JSON.parse(event.data);
+      } catch {
+        console.error("Failed to parse WebSocket message:", event.data);
+        return;
+      }
       if (msg.type === "session") {
         localStorage.setItem(TOKEN_KEY, msg.token);
       }

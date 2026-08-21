@@ -52,6 +52,16 @@ CREATE INDEX IF NOT EXISTS games_white_id ON games(white_id);
 CREATE INDEX IF NOT EXISTS games_black_id ON games(black_id);
 `,
 	},
+	{
+		Version: 2,
+		SQL: `
+-- Composite indexes for player game list and stats queries.
+CREATE INDEX IF NOT EXISTS games_white_finished ON games(white_id, finished_at DESC);
+CREATE INDEX IF NOT EXISTS games_black_finished ON games(black_id, finished_at DESC);
+-- Partial index for rated games used by GetPlayerStats.
+CREATE INDEX IF NOT EXISTS games_rated ON games(rated) WHERE rated = TRUE;
+`,
+	},
 }
 
 const schemaMigrationsTable = `

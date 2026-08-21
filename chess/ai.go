@@ -2,7 +2,10 @@
 // evaluation, and AI search (minimax with alpha-beta pruning).
 package chess
 
-import "sort"
+import (
+	"context"
+	"sort"
+)
 
 const (
 	mateScore  = 100_000
@@ -21,6 +24,9 @@ const (
 	phaseRook   = 2
 	phaseQueen  = 4
 	phaseTotal  = 4*phaseKnight + 4*phaseBishop + 4*phaseRook + 2*phaseQueen // 24
+
+	// Transposition table size: 2^20 entries ≈ 1M entries.
+	ttLogSize = 20
 )
 
 // searchContext holds per-search mutable state for move ordering heuristics.
@@ -28,6 +34,9 @@ type searchContext struct {
 	killers  [64][2]Move // 2 killer moves per ply
 	history  [64][64]int // history[fromSq][toSq] counters
 	maxDepth int         // root search depth (used to compute ply)
+	tt       *transTable // transposition table
+	nodes    int         // node counter for periodic cancellation checks
+	ctx      context.Context
 }
 
 func sqIndex(r, c int) int { return r*8 + c }
@@ -35,6 +44,12 @@ func sqIndex(r, c int) int { return r*8 + c }
 // BestMove uses iterative deepening with alpha-beta pruning.
 // Each iteration seeds the next with the previous best move for better ordering.
 func BestMove(state GameState, depth int) (Move, bool) {
+	return BestMoveCtx(context.Background(), state, depth)
+}
+
+// BestMoveCtx is like BestMove but accepts a context for cancellation.
+// When the context is cancelled, it returns the best move found so far.
+func BestMoveCtx(ctx context.Context, state GameState, depth int) (Move, bool) {
 	if depth < 1 {
 		depth = 1
 	}
@@ -45,20 +60,37 @@ func BestMove(state GameState, depth int) (Move, bool) {
 	}
 
 	bestMove := moves[0]
-	sc := &searchContext{}
+	sc := &searchContext{
+		tt:  newTransTable(ttLogSize),
+		ctx: ctx,
+	}
 
 	// Iterative deepening: search d=1,2,...,depth, using previous best for ordering.
 	for d := 1; d <= depth; d++ {
 		sc.maxDepth = d
+
+		// Decay history heuristic between iterations to age stale entries.
+		for i := range sc.history {
+			for j := range sc.history[i] {
+				sc.history[i][j] /= 2
+			}
+		}
+
 		ordered := orderMoves(state, moves, bestMove, sc, d)
 		alpha := -inf
 		beta := inf
 		iterBest := ordered[0]
 		iterScore := -inf
 
+		cancelled := false
 		for _, mv := range ordered {
 			next := ApplyMove(state, mv)
 			score := -negamax(next, d-1, -beta, -alpha, sc)
+			// Check for cancellation — keep best from previous complete iteration.
+			if ctx.Err() != nil {
+				cancelled = true
+				break
+			}
 			if score > iterScore {
 				iterScore = score
 				iterBest = mv
@@ -67,13 +99,24 @@ func BestMove(state GameState, depth int) (Move, bool) {
 				alpha = score
 			}
 		}
-		bestMove = iterBest
+		if !cancelled {
+			bestMove = iterBest
+		}
+		if cancelled {
+			break
+		}
 	}
 
 	return bestMove, true
 }
 
 func negamax(state GameState, depth, alpha, beta int, sc *searchContext) int {
+	// Periodic cancellation check (every 4096 nodes).
+	sc.nodes++
+	if sc.nodes&4095 == 0 && sc.ctx.Err() != nil {
+		return 0
+	}
+
 	moves := GenerateLegalMoves(state)
 	if len(moves) == 0 {
 		return evaluateTerminal(state, moves)
@@ -82,14 +125,44 @@ func negamax(state GameState, depth, alpha, beta int, sc *searchContext) int {
 		return quiescence(state, alpha, beta, maxQSDepth)
 	}
 
+	hash := ZobristHash(state)
+	alphaOrig := alpha
+
+	// Transposition table probe.
+	if entry, ok := sc.tt.probe(hash); ok && entry.depth >= depth {
+		switch entry.flag {
+		case ttExact:
+			return entry.score
+		case ttAlpha:
+			if entry.score < beta {
+				beta = entry.score
+			}
+		case ttBeta:
+			if entry.score > alpha {
+				alpha = entry.score
+			}
+		}
+		if alpha >= beta {
+			return entry.score
+		}
+	}
+
+	// Use TT best move as PV move for ordering.
+	pvMove := Move{}
+	if entry, ok := sc.tt.probe(hash); ok {
+		pvMove = entry.best
+	}
+
 	ply := sc.maxDepth - depth
-	ordered := orderMoves(state, moves, Move{}, sc, depth)
+	ordered := orderMoves(state, moves, pvMove, sc, depth)
 	best := -inf
+	bestMv := ordered[0]
 	for _, mv := range ordered {
 		next := ApplyMove(state, mv)
 		score := -negamax(next, depth-1, -beta, -alpha, sc)
 		if score > best {
 			best = score
+			bestMv = mv
 		}
 		if score > alpha {
 			alpha = score
@@ -106,6 +179,18 @@ func negamax(state GameState, depth, alpha, beta int, sc *searchContext) int {
 			break
 		}
 	}
+
+	// Store in transposition table.
+	var flag ttFlag
+	if best <= alphaOrig {
+		flag = ttAlpha
+	} else if best >= beta {
+		flag = ttBeta
+	} else {
+		flag = ttExact
+	}
+	sc.tt.store(hash, depth, best, flag, bestMv)
+
 	return best
 }
 
@@ -317,7 +402,126 @@ func evaluate(state GameState) int {
 	}
 	score := (mgTotal*phase + egTotal*(phaseTotal-phase)) / phaseTotal
 
+	// Pawn structure evaluation.
+	score += evaluatePawnStructure(board) * state.turn
+
 	return score * state.turn
+}
+
+// evaluatePawnStructure returns a score bonus/penalty from White's perspective
+// based on doubled, isolated, and passed pawns.
+func evaluatePawnStructure(board [8][8]rune) int {
+	score := 0
+
+	// Count pawns per file for each color.
+	var whitePawns [8]int
+	var blackPawns [8]int
+	for r := 0; r < 8; r++ {
+		for c := 0; c < 8; c++ {
+			switch board[r][c] {
+			case 'P':
+				whitePawns[c]++
+			case 'p':
+				blackPawns[c]++
+			}
+		}
+	}
+
+	// Doubled pawns penalty.
+	for c := 0; c < 8; c++ {
+		if whitePawns[c] > 1 {
+			score -= 15 * (whitePawns[c] - 1)
+		}
+		if blackPawns[c] > 1 {
+			score += 15 * (blackPawns[c] - 1)
+		}
+	}
+
+	// Isolated and passed pawns.
+	for c := 0; c < 8; c++ {
+		hasLeft := c > 0
+		hasRight := c < 7
+
+		// White isolated pawns.
+		if whitePawns[c] > 0 {
+			friendly := false
+			if hasLeft && whitePawns[c-1] > 0 {
+				friendly = true
+			}
+			if hasRight && whitePawns[c+1] > 0 {
+				friendly = true
+			}
+			if !friendly {
+				score -= 10
+			}
+		}
+
+		// Black isolated pawns.
+		if blackPawns[c] > 0 {
+			friendly := false
+			if hasLeft && blackPawns[c-1] > 0 {
+				friendly = true
+			}
+			if hasRight && blackPawns[c+1] > 0 {
+				friendly = true
+			}
+			if !friendly {
+				score += 10
+			}
+		}
+
+		// Passed pawns: no opposing pawns on same or adjacent files ahead.
+		if whitePawns[c] > 0 {
+			passed := true
+			// Find most advanced white pawn on this file.
+			advRow := 7
+			for r := 0; r < 8; r++ {
+				if board[r][c] == 'P' && r < advRow {
+					advRow = r
+				}
+			}
+			for checkC := max(0, c-1); checkC <= min(7, c+1); checkC++ {
+				for r := 0; r < advRow; r++ {
+					if board[r][checkC] == 'p' {
+						passed = false
+						break
+					}
+				}
+				if !passed {
+					break
+				}
+			}
+			if passed {
+				score += 20 + (6-advRow)*5 // more bonus the further advanced
+			}
+		}
+
+		if blackPawns[c] > 0 {
+			passed := true
+			advRow := 0
+			for r := 7; r >= 0; r-- {
+				if board[r][c] == 'p' && r > advRow {
+					advRow = r
+				}
+			}
+			for checkC := max(0, c-1); checkC <= min(7, c+1); checkC++ {
+				for r := 7; r > advRow; r-- {
+					if board[r][checkC] == 'P' {
+						passed = false
+						break
+					}
+				}
+				if !passed {
+					break
+				}
+			}
+			if passed {
+				score -= 20 + (advRow-1)*5
+			}
+		}
+	}
+
+	return score
 }
 
 func mirrorRow(r int, color int) int {

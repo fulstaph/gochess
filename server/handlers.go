@@ -23,6 +23,7 @@ func (s *GameSession) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+	conn.SetReadLimit(4096)
 
 	ctx := r.Context()
 
@@ -31,6 +32,7 @@ func (s *GameSession) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	if err := writeJSON(ctx, conn, msg); err != nil {
+		log.Printf("ws write initial state: %v", err)
 		return
 	}
 
@@ -50,7 +52,9 @@ func (s *GameSession) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		var clientMsg ClientMessage
 		if err := json.Unmarshal(data, &clientMsg); err != nil {
-			_ = writeJSON(ctx, conn, ErrorMessage{Type: "error", V: ProtocolVersion, Message: "invalid message format"})
+			if werr := writeJSON(ctx, conn, ErrorMessage{Type: "error", V: ProtocolVersion, Message: "invalid message format"}); werr != nil {
+				log.Printf("ws write error: %v", werr)
+			}
 			continue
 		}
 
@@ -62,7 +66,9 @@ func (s *GameSession) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "resign":
 			s.handleResign(ctx, conn)
 		default:
-			_ = writeJSON(ctx, conn, ErrorMessage{Type: "error", V: ProtocolVersion, Message: "unknown message type"})
+			if werr := writeJSON(ctx, conn, ErrorMessage{Type: "error", V: ProtocolVersion, Message: "unknown message type"}); werr != nil {
+				log.Printf("ws write error: %v", werr)
+			}
 		}
 	}
 }
@@ -72,14 +78,18 @@ func (s *GameSession) handleMove(ctx context.Context, conn *websocket.Conn, msg 
 	err := s.ApplyMove(msg.From, msg.To, msg.Promotion)
 	if err != nil {
 		s.mu.Unlock()
-		_ = writeJSON(ctx, conn, ErrorMessage{Type: "error", V: ProtocolVersion, Message: err.Error()})
+		if werr := writeJSON(ctx, conn, ErrorMessage{Type: "error", V: ProtocolVersion, Message: err.Error()}); werr != nil {
+			log.Printf("ws write error: %v", werr)
+		}
 		return
 	}
 	state := s.BuildStateMessage()
 	aiShouldMove := s.ShouldAIMove()
 	s.mu.Unlock()
 
-	_ = writeJSON(ctx, conn, state)
+	if werr := writeJSON(ctx, conn, state); werr != nil {
+		log.Printf("ws write error: %v", werr)
+	}
 
 	if aiShouldMove {
 		s.handleAITurn(ctx, conn)
@@ -102,7 +112,9 @@ func (s *GameSession) handleNewGame(ctx context.Context, conn *websocket.Conn, m
 	aiShouldMove := s.ShouldAIMove()
 	s.mu.Unlock()
 
-	_ = writeJSON(ctx, conn, state)
+	if werr := writeJSON(ctx, conn, state); werr != nil {
+		log.Printf("ws write error: %v", werr)
+	}
 
 	if aiShouldMove {
 		s.handleAITurn(ctx, conn)
@@ -115,11 +127,15 @@ func (s *GameSession) handleResign(ctx context.Context, conn *websocket.Conn) {
 	state := s.BuildStateMessage()
 	s.mu.Unlock()
 
-	_ = writeJSON(ctx, conn, state)
+	if werr := writeJSON(ctx, conn, state); werr != nil {
+		log.Printf("ws write error: %v", werr)
+	}
 }
 
 func (s *GameSession) handleAITurn(ctx context.Context, conn *websocket.Conn) {
-	_ = writeJSON(ctx, conn, ThinkingMessage{Type: "thinking", V: ProtocolVersion})
+	if werr := writeJSON(ctx, conn, ThinkingMessage{Type: "thinking", V: ProtocolVersion}); werr != nil {
+		log.Printf("ws write error: %v", werr)
+	}
 
 	// Copy state before releasing the lock so AI computation is lock-free.
 	s.mu.Lock()
@@ -140,7 +156,9 @@ func (s *GameSession) handleAITurn(ctx context.Context, conn *websocket.Conn) {
 	aiShouldMove := s.ShouldAIMove()
 	s.mu.Unlock()
 
-	_ = writeJSON(ctx, conn, state)
+	if werr := writeJSON(ctx, conn, state); werr != nil {
+		log.Printf("ws write error: %v", werr)
+	}
 
 	if aiShouldMove {
 		s.handleAITurn(ctx, conn)

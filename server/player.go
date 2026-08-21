@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
 	"nhooyr.io/websocket"
 )
@@ -53,7 +54,10 @@ func newPlayer(id, displayName string, conn *websocket.Conn, hub *Hub) *Player {
 }
 
 // writePump drains the send channel to the WebSocket connection.
+// It also sends periodic pings to keep the connection alive through proxies.
 func (p *Player) writePump(ctx context.Context) {
+	pingTicker := time.NewTicker(30 * time.Second)
+	defer pingTicker.Stop()
 	for {
 		select {
 		case msg, ok := <-p.send:
@@ -61,6 +65,12 @@ func (p *Player) writePump(ctx context.Context) {
 				return
 			}
 			if err := p.conn.Write(ctx, websocket.MessageText, msg); err != nil {
+				log.Printf("player %s write: %v", p.ID, err)
+				return
+			}
+		case <-pingTicker.C:
+			if err := p.conn.Ping(ctx); err != nil {
+				log.Printf("player %s ping: %v", p.ID, err)
 				return
 			}
 		case <-ctx.Done():
