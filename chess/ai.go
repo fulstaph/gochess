@@ -127,6 +127,7 @@ func negamax(state GameState, depth, alpha, beta int, sc *searchContext) int {
 
 	hash := ZobristHash(state)
 	alphaOrig := alpha
+	betaOrig := beta
 
 	// Transposition table probe.
 	pvMove := Move{}
@@ -182,7 +183,7 @@ func negamax(state GameState, depth, alpha, beta int, sc *searchContext) int {
 	var flag ttFlag
 	if best <= alphaOrig {
 		flag = ttAlpha
-	} else if best >= beta {
+	} else if best >= betaOrig {
 		flag = ttBeta
 	} else {
 		flag = ttExact

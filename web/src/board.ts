@@ -135,6 +135,9 @@ export class Board {
     }
 
     for (let row = 0; row < 8; row++) {
+      const rowEl = document.createElement("div");
+      rowEl.setAttribute("role", "row");
+      rowEl.style.display = "contents";
       for (let col = 0; col < 8; col++) {
         const r = this.flipped ? 7 - row : row;
         const c = this.flipped ? 7 - col : col;
@@ -182,8 +185,9 @@ export class Board {
           div.appendChild(rankLabel);
         }
 
-        this.el.appendChild(div);
+        rowEl.appendChild(div);
       }
+      this.el.appendChild(rowEl);
     }
   }
 

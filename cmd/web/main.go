@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fulstaph/gochess/server"
@@ -70,13 +71,11 @@ func main() {
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Cache JS/CSS for 1 day, HTML for 5 minutes.
 		path := r.URL.Path
-		if len(path) > 3 {
-			switch {
-			case path[len(path)-3:] == ".js" || path[len(path)-4:] == ".css":
-				w.Header().Set("Cache-Control", "public, max-age=86400")
-			default:
-				w.Header().Set("Cache-Control", "public, max-age=300")
-			}
+		switch {
+		case strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css"):
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		default:
+			w.Header().Set("Cache-Control", "public, max-age=300")
 		}
 		fileServer.ServeHTTP(w, r)
 	}))
