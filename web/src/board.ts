@@ -5,6 +5,10 @@ const PIECE_MAP: Record<string, string> = {
   k: "\u265A", q: "\u265B", r: "\u265C", b: "\u265D", n: "\u265E", p: "\u265F",
 };
 
+const PIECE_NAMES: Record<string, string> = {
+  K: "White King", Q: "White Queen", R: "White Rook", B: "White Bishop", N: "White Knight", P: "White Pawn",
+  k: "Black King", q: "Black Queen", r: "Black Rook", b: "Black Bishop", n: "Black Knight", p: "Black Pawn",
+};
 const FILES = "abcdefgh";
 const DRAG_THRESHOLD = 5; // pixels before a pointerdown becomes a drag
 
@@ -36,6 +40,8 @@ export class Board {
 
   constructor(el: HTMLElement, onMove: MoveCallback) {
     this.el = el;
+    this.el.setAttribute("role", "grid");
+    this.el.setAttribute("aria-label", "Chess board");
     this.onMove = onMove;
 
     // Delegate square interactions to the board container — avoids 128 listeners per render.
@@ -129,6 +135,9 @@ export class Board {
     }
 
     for (let row = 0; row < 8; row++) {
+      const rowEl = document.createElement("div");
+      rowEl.setAttribute("role", "row");
+      rowEl.style.display = "contents";
       for (let col = 0; col < 8; col++) {
         const r = this.flipped ? 7 - row : row;
         const c = this.flipped ? 7 - col : col;
@@ -138,6 +147,11 @@ export class Board {
         const div = document.createElement("div");
         div.className = "square " + (isLight ? "light" : "dark");
         div.dataset.square = sq;
+        div.setAttribute("role", "gridcell");
+
+        const piece = state.board[r][c];
+        const pieceName = piece ? (PIECE_NAMES[piece] ?? piece) : "empty";
+        div.setAttribute("aria-label", `${sq} ${pieceName}`);
 
         if (state.lastMove && (sq === state.lastMove.from || sq === state.lastMove.to)) {
           div.classList.add("highlight");
@@ -151,7 +165,6 @@ export class Board {
           div.classList.add("premove");
         }
 
-        const piece = state.board[r][c];
         if (piece && PIECE_MAP[piece]) {
           const span = document.createElement("span");
           span.className = piece >= "a" ? "piece piece-black" : "piece piece-white";
@@ -172,8 +185,9 @@ export class Board {
           div.appendChild(rankLabel);
         }
 
-        this.el.appendChild(div);
+        rowEl.appendChild(div);
       }
+      this.el.appendChild(rowEl);
     }
   }
 

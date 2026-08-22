@@ -94,6 +94,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Limit incoming message size to 4 KB to prevent OOM from oversized frames.
+	conn.SetReadLimit(4096)
+
 	playerID, displayName, token, err := h.sessions.resolve(r)
 	if err != nil {
 		log.Printf("session resolve: %v", err)
@@ -127,6 +130,16 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 // dispatch routes a client message to the appropriate handler.
 func (h *Hub) dispatch(p *Player, msg ClientMessage) {
+	// Validate protocol version if provided.
+	if msg.V != "" && msg.V != ProtocolVersion {
+		p.sendJSON(ErrorMessage{
+			Type:    "error",
+			V:       ProtocolVersion,
+			Message: "unsupported protocol version: " + msg.V,
+		})
+		return
+	}
+
 	// Rate-limit expensive or abuse-prone message types before routing.
 	switch msg.Type {
 	case "login", "register":

@@ -195,40 +195,29 @@ type PlayerStats struct {
 	Draws  int
 }
 
-// GetPlayerStats returns win/loss/draw counts for a player.
+// GetPlayerStats returns win/loss/draw counts for a player using SQL aggregation.
 func (db *Postgres) GetPlayerStats(ctx context.Context, playerID string) (PlayerStats, error) {
 	var st PlayerStats
-	rows, err := db.pool.Query(ctx, `
-		SELECT result, white_id FROM games
-		WHERE (white_id = $1 OR black_id = $1) AND rated = TRUE`, playerID)
+	err := db.pool.QueryRow(ctx, `
+		SELECT
+			COALESCE(SUM(CASE WHEN result LIKE 'Draw%' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE
+				WHEN result LIKE 'White%' AND white_id = $1 THEN 1
+				WHEN result LIKE 'Black%' AND black_id = $1 THEN 1
+				ELSE 0
+			END), 0),
+			COALESCE(SUM(CASE
+				WHEN result LIKE 'White%' AND white_id != $1 THEN 1
+				WHEN result LIKE 'Black%' AND black_id != $1 THEN 1
+				ELSE 0
+			END), 0)
+		FROM games
+		WHERE (white_id = $1 OR black_id = $1) AND rated = TRUE`,
+		playerID).Scan(&st.Draws, &st.Wins, &st.Losses)
 	if err != nil {
 		return st, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var result, whiteID string
-		if err := rows.Scan(&result, &whiteID); err != nil {
-			return st, err
-		}
-		switch {
-		case len(result) >= 4 && result[:4] == "Draw":
-			st.Draws++
-		case len(result) >= 5 && result[:5] == "White":
-			if whiteID == playerID {
-				st.Wins++
-			} else {
-				st.Losses++
-			}
-		case len(result) >= 5 && result[:5] == "Black":
-			if whiteID == playerID {
-				st.Losses++
-			} else {
-				st.Wins++
-			}
-		}
-	}
-	return st, rows.Err()
+	return st, nil
 }
 
 // SessionTTL is how long a guest session stays valid without activity.
